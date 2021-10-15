@@ -1,3 +1,8 @@
+/*********************
+ * @file a.c
+ * @brief test sender
+ */
+
 #include "device.h"
 #include "packetio.h"
 
@@ -20,5 +25,4 @@ int main() {
 
     ret = sendFrame(content, len, 0x0800, dest_mac, a);
     CPES(ret < 0, "Error sending data", pcap_geterr(dev_handles[a]));
-    printf("Send %d bytes\n", ret);
 }

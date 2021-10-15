@@ -1,3 +1,8 @@
+/*********************
+ * @file main.c
+ * @brief misc test
+ */
+
 #include "utils.h"
 
 #include <errno.h>
@@ -31,6 +36,9 @@ int main(int argc, char *argv[]) {
     pcap_t *pcap_handle;
     pcap_handle = pcap_create(devname, err_buf);
     CPES(pcap_handle == NULL, err_buf, "");
+
+    printf("%d\n", pcap_can_set_rfmon(pcap_handle));
+
     ret = pcap_activate(pcap_handle);
     CPE(ret != 0, "Error activating", ret);
 

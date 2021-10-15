@@ -15,7 +15,7 @@
         exit(1);              \
     }
 
-#define RCPE(val, ret_value)  \
+#define RCPE(val, ret_value, msg)  \
     do                        \
         if (val) {            \
             return ret_value; \

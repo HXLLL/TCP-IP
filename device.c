@@ -1,4 +1,5 @@
 #include "device.h"
+#include "packetio.h"
 
 #include <pcap/pcap.h>
 #include <string.h>
@@ -13,7 +14,7 @@ pcap_if_t *devinfo[MAX_DEVICES];
 int total_dev;
 
 /**
- * init pcap library
+ * @brief init pcap library
  * *
  * @return 0 on success, -1 on error.
  */
@@ -28,18 +29,17 @@ int my_init() {
 }
 
 /**
-* Add a device to the library for sending / receiving packets .
-* *
-@param device Name of network device to send / receive packet on.
-* @return A non - negative _device - ID_ on success , -1 on error .
-*/
+ * @brief Add a device to the library for sending / receiving packets .
+ * *
+ * @param device Name of network device to send / receive packet on.
+ * @return A non - negative _device - ID_ on success , -1 on error .
+ */
 int addDevice(const char *device) {
     int ret;
     int len = strnlen(device, MAX_DEVICE_NAME);
     if (len >= MAX_DEVICE_NAME || len <= 0) { // invalid device name
         return -1;
     }
-    strncpy(dev_names[total_dev], device, MAX_DEVICE_NAME);
 
     for (pcap_if_t *p = alldev; p; p = p->next) {
         if (strncmp(device, p->name, MAX_DEVICE_NAME) == 0) {
@@ -50,25 +50,37 @@ int addDevice(const char *device) {
 
     pcap_t *pcap_handle;
     pcap_handle = pcap_create(device, err_buf);
-    RCPE(pcap_handle == NULL, -1);
+    RCPE(pcap_handle == NULL, -1, "Error creating pcap handle");
+
+    ret = pcap_set_snaplen(pcap_handle, 65535);
+    RCPE(ret < 0, -1, "Error setting snaplen");
+
+//    ret = pcap_set_timeout(pcap_handle, 100);
+//    RCPE(ret < 0, -1, "Error setting timeout");
+
+    ret = pcap_set_immediate_mode(pcap_handle, 1);
+    RCPE(ret < 0, -1, "Error setting immediate mode");
+
+    ret = pcap_setnonblock(pcap_handle, 1, err_buf);
+    RCPE(ret < 0, -1, "Error setting nonblock");
+
+    ret = pcap_activate(pcap_handle);   // finally activation
+    RCPE(ret < 0, -1, "Error activating handle");
+
     dev_handles[total_dev] = pcap_handle;
-
-    ret = pcap_activate(dev_handles[total_dev]);
-    RCPE(ret < 0, -1);
-
     return total_dev++;
 }
 
 /**
-* Find a device added by ‘addDevice ‘.
-* *
-@param device Name of the network device .
-* @return A non - negative _device - ID_ on success , -1 if no such device
-* was found .
-*/
+ * @brief Find a device added by ‘addDevice ‘.
+ * *
+ * @param device Name of the network device .
+ * @return A non - negative _device - ID_ on success , -1 if no such device
+ * was found .
+ */
 int findDevice(const char *device) {
     for (int i = 0; i != total_dev; ++i) {
-        if (strncmp(device, dev_names[i], MAX_DEVICE_NAME) == 0) {
+        if (strncmp(device, devinfo[i]->name, MAX_DEVICE_NAME) == 0) {
             return i;
         }
     }
