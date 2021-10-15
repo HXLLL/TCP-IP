@@ -9,22 +9,25 @@
 int poll_running;
 pthread_t poll_handle;
 typedef unsigned char u_char;
-static uint8_t send_buffer[BUFFER_SIZE];
 
 int sendFrame(const void *buf, int len, int ethtype,
               const void *destmac, int id) {
     RCPE(len > MAX_TRANSMIT_UNIT, -1, "Frame too large");
 
+    size_t total_len = len + ETH_HLEN;
+    uint8_t *send_buffer = malloc(total_len);
     struct ethhdr *hdr = (struct ethhdr *)send_buffer;
     void *data = send_buffer + sizeof(struct ethhdr);
-    size_t total_len = len + ETH_HLEN;
 
     memcpy(&hdr->h_dest, destmac, ETH_ALEN); // assume h_dest is big endian
     memset(&hdr->h_source, 0, ETH_ALEN);     // doesn't need source
     hdr->h_proto = htons(ethtype);           // ethtype is little endian, need conversion
     memcpy(data, buf, len);                  // data need no conversion
 
-    int ret = pcap_inject(dev_handles[id], send_buffer, total_len);
+    int ret = pcap_inject(dev_handles[id], send_buffer, total_len);     // TODO: may not be thread safe
+
+    free(send_buffer);
+
     if (ret >= 0) return 0; // successful => ret=bytes sent (>=0)
     return ret;
 }
