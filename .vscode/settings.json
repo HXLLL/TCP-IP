@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "utils.h": "c",
+        "pcap.h": "c",
+        "device.h": "c"
+    }
+}
