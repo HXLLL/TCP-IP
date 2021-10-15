@@ -13,11 +13,6 @@ pcap_t *dev_handles[MAX_DEVICES];
 pcap_if_t *devinfo[MAX_DEVICES];
 int total_dev;
 
-/**
- * @brief init pcap library
- * *
- * @return 0 on success, -1 on error.
- */
 int my_init() {
     int ret;
     ret = pcap_init(PCAP_CHAR_ENC_LOCAL, NULL);
@@ -28,12 +23,6 @@ int my_init() {
     return ret;
 }
 
-/**
- * @brief Add a device to the library for sending / receiving packets .
- * *
- * @param device Name of network device to send / receive packet on.
- * @return A non - negative _device - ID_ on success , -1 on error .
- */
 int addDevice(const char *device) {
     int ret;
     int len = strnlen(device, MAX_DEVICE_NAME);
@@ -71,13 +60,6 @@ int addDevice(const char *device) {
     return total_dev++;
 }
 
-/**
- * @brief Find a device added by ‘addDevice ‘.
- * *
- * @param device Name of the network device .
- * @return A non - negative _device - ID_ on success , -1 if no such device
- * was found .
- */
 int findDevice(const char *device) {
     for (int i = 0; i != total_dev; ++i) {
         if (strncmp(device, devinfo[i]->name, MAX_DEVICE_NAME) == 0) {
