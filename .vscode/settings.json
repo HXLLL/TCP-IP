@@ -2,6 +2,10 @@
     "files.associations": {
         "utils.h": "c",
         "pcap.h": "c",
-        "device.h": "c"
+        "device.h": "c",
+        "packetio.h": "c",
+        "ether.h": "c",
+        "if_ether.h": "c",
+        "types.h": "c"
     }
 }

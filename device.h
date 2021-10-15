@@ -1,36 +1,30 @@
-#ifndef DEVICE_H
-#define DEVICE_H
-
-#define MAX_DEVICES 255
-#define MAX_DEVICE_NAME 255
 /**
 * @file device .h
 * @brief Library supporting network device management .
 */
 
-/**
-* init pcap library
-* *
-* @return 0 on success, -1 on error.
-*/
+#ifndef DEVICE_H
+#define DEVICE_H
 
-int my_init() ;
+#include <pcap/pcap.h>
 
-/**
-* Add a device to the library for sending / receiving packets .
-* *
-@param device Name of network device to send / receive packet on.
-* @return A non - negative _device - ID_ on success , -1 on error .
-*/
-int addDevice ( const char * device );
+/* Constants */
+#define MAX_DEVICES 255
+#define MAX_DEVICE_NAME 255
 
-/**
-* Find a device added by ‘addDevice ‘.
-* *
-@param device Name of the network device .
-* @return A non - negative _device - ID_ on success , -1 if no such device
-* was found .
-*/
-int findDevice ( const char * device );
+/* Global Variables */
+extern pcap_t *dev_handles[MAX_DEVICES];
+extern pcap_if_t *devinfo[MAX_DEVICES];
+extern char dev_names[MAX_DEVICES][MAX_DEVICE_NAME];
+extern int total_dev;
+
+/* init pcap library */
+int my_init();
+
+/* Add a device to the library for sending / receiving packets */
+int addDevice(const char *device);
+
+/* Find a device added by ‘addDevice ‘ */
+int findDevice(const char *device);
 
 #endif

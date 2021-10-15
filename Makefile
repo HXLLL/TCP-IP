@@ -7,7 +7,7 @@ all: build/main build/a
 build/main: main.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
-build/a: a.c device.c
+build/a: a.c device.c packetio.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 .PHONY: clean
