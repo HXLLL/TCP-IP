@@ -6,6 +6,11 @@
         "packetio.h": "c",
         "ether.h": "c",
         "if_ether.h": "c",
-        "types.h": "c"
+        "types.h": "c",
+        "ip.h": "c",
+        "routing_table.h": "c",
+        "cstring": "c",
+        "variant": "c",
+        "tcp.h": "c"
     }
 }

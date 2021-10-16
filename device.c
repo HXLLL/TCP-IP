@@ -1,5 +1,7 @@
+#include "ip.h"
 #include "device.h"
 #include "packetio.h"
+#include "routing_table.h"
 
 #include <pcap/pcap.h>
 #include <string.h>
@@ -11,16 +13,21 @@ static pcap_if_t *alldev;
 
 pcap_t *dev_handles[MAX_DEVICES];
 pcap_if_t *devinfo[MAX_DEVICES];
+struct RT *dev_rt[MAX_DEVICES];
+
 int total_dev;
 
 int my_init() {
     int ret;
     ret = pcap_init(PCAP_CHAR_ENC_LOCAL, NULL);
-    if (ret != 0) return ret;
+    RCPE(ret != 0, -1, "Error initiating pcap");
 
     ret = pcap_findalldevs(&alldev, err_buf);
-    if (ret != 0) return ret;
-    return ret;
+    RCPE(ret != 0, -1, "Error finding all devs");
+
+    ip_init();
+
+    return 0;
 }
 
 int addDevice(const char *device) {

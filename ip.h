@@ -9,6 +9,13 @@ in an Ethernet II frame.
 
 #include <netinet/ip.h>
 
+#define INIT_TTL 5
+
+/****
+* @brief init ip 
+**/
+int ip_init();
+
 /**
 * @brief Send an IP packet to specified host.
 * *
@@ -48,7 +55,7 @@ with real Linux machines.
 * *
 * @param dest The destination IP prefix.
 * @param mask The subnet mask of the destination IP prefix.
-* @param nextHopMAC MAC address of the next hop.
+* @param nextHopMAC MAC address of the next hop, **big endian**.
 * @param device Name of device to send packets on.
 * @return 0 on success, -1 on error
 */

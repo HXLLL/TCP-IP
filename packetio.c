@@ -14,7 +14,7 @@ int sendFrame(const void *buf, int len, int ethtype,
               const void *destmac, int id) {
     RCPE(len > MAX_TRANSMIT_UNIT, -1, "Frame too large");
 
-    size_t total_len = len + ETH_HLEN;
+    size_t total_len = len + sizeof(struct ethhdr);
     uint8_t *send_buffer = malloc(total_len);
     struct ethhdr *hdr = (struct ethhdr *)send_buffer;
     void *data = send_buffer + sizeof(struct ethhdr);
