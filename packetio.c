@@ -2,6 +2,7 @@
 #include "device.h"
 #include "utils.h"
 
+#include <callback.h>
 #include <pcap/pcap.h>
 #include <pthread.h>
 #include <string.h>

@@ -1,6 +1,6 @@
 CFLAGS 	:= -g3
 CC 		:= gcc
-LDFLAGS := -lpcap -lpthread
+LDFLAGS := -lpcap -lpthread -lffcall
 LIB_FILE:=device.c packetio.c ip.c routing_table.c
 
 all: build/main build/a build/b

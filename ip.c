@@ -4,6 +4,8 @@
 #include "packetio.h"
 #include "routing_table.h"
 
+#include <callback.h>
+#include <pthread.h>
 #include <string.h>
 #include <netinet/ip.h>
 #include <netinet/ether.h>
@@ -25,7 +27,6 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest,
     size_t total_len = sizeof(struct iphdr) + len;
     uint8_t *send_buffer = malloc(total_len);
     struct iphdr *hdr = (struct iphdr*)send_buffer;
-    void *data = send_buffer + sizeof(struct iphdr);
 
     hdr->version = 4;
     hdr->ihl = 5;
@@ -43,6 +44,7 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest,
 
     compute_ip_checksum(hdr);
 
+    void *data = ip_raw_content(send_buffer);
     memcpy(data, buf, len);
 
     struct Record rec;
@@ -55,7 +57,33 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest,
 
 typedef int (*IPPacketReceiveCallback)(const void *buf, int len);
 
-int setIPPacketReceiveCallback(IPPacketReceiveCallback callback);
+void IPCallbackWrapper(void *data, va_alist valist) {
+    int ret;
+    IPPacketReceiveCallback ip_cb = (IPPacketReceiveCallback)data;
+    void *pkt_data, *eth_data, *ip_data;
+    int len, dev_id;
+
+    va_start_int(valist);
+    pkt_data = va_arg_ptr(valist, void*);
+    len = va_arg_int(valist);
+    dev_id = va_arg_int(valist);
+    
+    eth_data = eth_raw_content(pkt_data);
+    len -= eth_hdr_len(pkt_data);
+
+    ip_data = ip_raw_content(eth_data);
+    len -= ip_hdr_len(eth_data);
+
+    ret = ip_cb(ip_data, len);
+
+    va_return_int(valist, ret);
+}
+
+int setIPPacketReceiveCallback(IPPacketReceiveCallback callback) {
+    callback_t cb;
+    cb = alloc_callback(IPCallbackWrapper, callback);
+    setFrameReceiveCallback(cb);
+}
 
 int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
                     const void *nextHopMAC, const char *device) {

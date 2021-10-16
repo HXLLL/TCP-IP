@@ -11,6 +11,8 @@
         "routing_table.h": "c",
         "cstring": "c",
         "variant": "c",
-        "tcp.h": "c"
+        "tcp.h": "c",
+        "string.h": "c",
+        "callback.h": "c"
     }
 }
