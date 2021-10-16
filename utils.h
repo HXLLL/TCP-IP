@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <errno.h>
+#include <netinet/ether.h>
 #include <netinet/ip.h>
 #include <stdlib.h>
 #define CPES(val, msg, errmsg)             \
@@ -51,4 +52,25 @@ static void compute_ip_checksum(struct iphdr *iphdrp) {
     iphdrp->check = compute_checksum((unsigned short *)iphdrp, iphdrp->ihl << 2);
 }
 
+inline static void *eth_raw_content(void *buf) {
+    return buf + ETH_HLEN;
+}
+inline static const void *eth_raw_content_const(const void *buf) {
+    return buf + ETH_HLEN;
+}
+inline static void *ip_raw_content(void *buf) {
+    struct iphdr *hdr = (struct iphdr*)buf;
+    return buf + ((hdr->ihl) << 2);
+}
+inline static const void *ip_raw_content_const(const void *buf) {
+    struct iphdr *hdr = (struct iphdr*)buf;
+    return buf + ((hdr->ihl) << 2);
+}
+inline static int eth_hdr_len(const void *buf) {
+    return ETH_HLEN;
+}
+inline static int ip_hdr_len(const uint8_t *buf) {
+    struct iphdr *hdr = (struct iphdr*)buf;
+    return (hdr->ihl) << 2;
+}
 #endif
