@@ -48,8 +48,6 @@ struct neigh_record *neigh_ht_by_addr, *neigh_ht_by_id;
 int d[MAX_NETWORK_SIZE];
 int net_size;
 
-int a[10000000];
-
 int ip_callback(const void *frame, int len) {
     printf("Receive data length: %d\n", len);
     struct iphdr *hdr = (struct iphdr *)frame;
