@@ -13,6 +13,7 @@
         "variant": "c",
         "tcp.h": "c",
         "string.h": "c",
-        "callback.h": "c"
+        "callback.h": "c",
+        "if.h": "c"
     }
 }

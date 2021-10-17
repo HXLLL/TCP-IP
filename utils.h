@@ -23,6 +23,7 @@
 #define RCPE(val, ret_value, msg) \
     do                            \
         if (val) {                \
+            fprintf(stderr, "%s\n",  msg); \
             return ret_value;     \
         }                         \
     while (0)
