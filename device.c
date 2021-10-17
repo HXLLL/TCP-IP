@@ -4,6 +4,7 @@
 #include "routing_table.h"
 #include "utils.h"
 
+#include <pthread.h>
 #include <pcap/pcap.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +21,8 @@ pcap_t *dev_handles[MAX_DEVICES];
 pcap_if_t *devinfo[MAX_DEVICES];
 struct RT *dev_rt[MAX_DEVICES];
 struct MAC_addr dev_MAC[MAX_DEVICES];
+pthread_mutex_t dev_mutex[MAX_DEVICES];
+int total_dev;
 
 /*****
  * get mac address
@@ -37,7 +40,18 @@ int get_MAC(const char *device, struct MAC_addr *res) {
     return 0;
 }
 
-int total_dev;
+/*****
+ * TODO: too ugly
+ ****/
+int get_IP(int id, struct sockaddr *res) {
+    for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
+        if (p->addr->sa_family == AF_INET) {
+            memcpy(res, p->addr, sizeof(struct sockaddr));
+            return 0;
+        }
+    }
+    return -1;
+}
 
 int my_init() {
     int ret;
@@ -67,9 +81,13 @@ int addDevice(const char *device) {
         }
     }
 
-    //get MAC address
+    // get MAC address
     ret = get_MAC(device, &dev_MAC[total_dev]);
     RCPE(ret == -1, -1, "Error getting MAC");
+    
+    // init mutex
+    ret = pthread_mutex_init(&dev_mutex[total_dev], NULL);
+    RCPE(ret == -1, -1, "Error initiating mutex");
 
     pcap_t *pcap_handle;
     pcap_handle = pcap_create(device, err_buf);

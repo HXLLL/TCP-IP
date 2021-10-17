@@ -14,6 +14,11 @@
         "tcp.h": "c",
         "string.h": "c",
         "callback.h": "c",
-        "if.h": "c"
+        "if.h": "c",
+        "stdlib.h": "c",
+        "hash-table.h": "c",
+        "hash-int.h": "c",
+        "set.h": "c",
+        "tuple": "cpp"
     }
 }

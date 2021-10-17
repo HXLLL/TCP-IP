@@ -29,7 +29,7 @@ int main() {
 
     struct in_addr src,dest, mask;
     inet_pton(AF_INET, "192.168.3.1", &src);
-    inet_pton(AF_INET, "192.168.3.2", &dest);
+    inet_pton(AF_INET, "255.255.255.255", &dest);
     inet_pton(AF_INET, "255.255.255.255", &mask);
 
     ret = setRoutingTable(dest, mask, dest_mac, "veth1");

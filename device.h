@@ -8,6 +8,7 @@
 
 #include "packetio.h"
 
+#include <pthread.h>
 #include <pcap/pcap.h>
 
 struct MAC_addr {
@@ -24,6 +25,7 @@ extern pcap_t *dev_handles[MAX_DEVICES];
 extern pcap_if_t *devinfo[MAX_DEVICES];
 extern char dev_names[MAX_DEVICES][MAX_DEVICE_NAME];
 extern struct MAC_addr dev_MAC[MAX_DEVICES];
+extern pthread_mutex_t dev_mutex[MAX_DEVICES];
 extern int total_dev;
 
 /**
@@ -49,5 +51,7 @@ int addDevice(const char *device);
  * was found .
  */
 int findDevice(const char *device);
+
+int get_IP(int id, struct sockaddr *res);
 
 #endif

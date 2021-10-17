@@ -25,7 +25,9 @@ int sendFrame(const void *buf, int len, int ethtype,
     hdr->h_proto = htons(ethtype);           // ethtype is little endian, need conversion
     memcpy(data, buf, len);                  // data need no conversion
 
-    int ret = pcap_inject(dev_handles[id], send_buffer, total_len);     // TODO: may not be thread safe
+    pthread_mutex_lock(&dev_mutex[id]);
+    int ret = pcap_inject(dev_handles[id], send_buffer, total_len);
+    pthread_mutex_unlock(&dev_mutex[id]);
 
     free(send_buffer);
 
