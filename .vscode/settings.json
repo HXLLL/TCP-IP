@@ -19,6 +19,13 @@
         "hash-table.h": "c",
         "hash-int.h": "c",
         "set.h": "c",
-        "tuple": "cpp"
+        "tuple": "cpp",
+        "time.h": "c",
+        "features.h": "c",
+        "unistd.h": "c",
+        "condition_variable": "c",
+        "arp.h": "c",
+        "link_state.h": "c",
+        "errno.h": "c"
     }
 }

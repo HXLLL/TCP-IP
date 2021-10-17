@@ -1,3 +1,4 @@
+#include "arp.h"
 #include "device.h"
 #include "ip.h"
 #include "utils.h"
@@ -45,12 +46,13 @@ int dev_cnt;
 int dev_id[MAX_PORT];
 struct sockaddr_in IP_addr; // big endian
 struct bc_record *bc_set;
-struct host_record *neigh_ht_by_addr, *neigh_ht_by_id;
 struct host_record *host_by_addr, *host_by_id;
 struct LinkState *ls;
 int d[MAX_NETWORK_SIZE];
 int bc_id;
 int net_size;
+
+void process_link_state(uint32_t s_addr, uint32_t *data);
 
 static inline void add_host_record(struct host_record *rec) {
     HASH_ADD(hh_id, host_by_id, id, sizeof(int), rec);
@@ -98,28 +100,38 @@ int ip_callback(const void *frame, int len) {
     in_addr_src.s_addr = hdr->saddr;
     in_addr_dst.s_addr = hdr->daddr;
 
-    if (hdr->daddr == IP_addr.sin_addr.s_addr) {
-        fwrite(data, 1, len - ip_hdr_len(frame), stdout);
-        fwrite("\n", 1, 1, stdout);
-    } else if (hdr->daddr == 0xffffffff) { // broadcast
-        
-    } else { // forward
-        int tid = query_id(hdr->daddr);
-        if (tid != -1 && linkstate_next_hop(ls, tid) != -1) { // forward it
-            int nxt = linkstate_next_hop(ls, tid);
-            struct in_addr in_addr_nxt;
-            in_addr_nxt.s_addr = query_addr(nxt);
-            sendIPPacket(in_addr_src, in_addr_dst, in_addr_nxt, hdr->protocol, data, len - ip_hdr_len(frame));
-        } else { // drop it
-            fwrite("Drop a packet", 1, 13, stdout);
+    do {
+        if (hdr->daddr == IP_addr.sin_addr.s_addr) {
+            fwrite(data, 1, len - ip_hdr_len(frame), stdout);
             fwrite("\n", 1, 1, stdout);
+        } else if (hdr->daddr == 0xffffffff) { // broadcast
+            if (hdr->protocol == MY_CONTROL_PROTOCOl) {
+                uint32_t my_protocol_type = *(uint32_t*)data;
+                if (my_protocol_type == PROTO_LINKSTATE) {
+                    process_link_state(hdr->saddr, (uint32_t*)data);
+                }
+            }
+        } else { // forward
+            int tid = query_id(hdr->daddr);
+            if (tid != -1 && linkstate_next_hop(ls, tid) != -1) { // forward it
+                int nxt = linkstate_next_hop(ls, tid);
+                struct in_addr in_addr_nxt;
+                in_addr_nxt.s_addr = query_addr(nxt);
+                sendIPPacket(in_addr_src, in_addr_dst, in_addr_nxt, hdr->protocol, data, len - ip_hdr_len(frame));
+            } else { // drop it
+                fwrite("Drop a packet", 1, 13, stdout);
+                fwrite("\n", 1, 1, stdout);
+            }
         }
-    }
+    } while (0);
 
     return 0;
 }
 
-void process_link_state(uint32_t s_addr, uint32_t *data, int cnt) {
+void process_link_state(uint32_t s_addr, uint32_t *data) {
+    int cnt = data[1];
+    data += 2;
+
     int sid, tid;
     struct host_record *res;
     HASH_FIND(hh_addr, host_by_addr, &s_addr, sizeof(int), res);
@@ -141,16 +153,16 @@ void process_link_state(uint32_t s_addr, uint32_t *data, int cnt) {
 }
 
 void send_link_state() {
-    int count = HASH_CNT(hh_addr, neigh_ht_by_addr);
+    int count = HASH_COUNT(arp_table);
     int len=count * sizeof(int) + 8;
     uint32_t *buf = malloc(len);
-    struct host_record *it, *tmp;
+    struct arp_record *it, *tmp;
     buf[0] = PROTO_LINKSTATE;
     buf[1] = count;
     int j = 0;
-    HASH_ITER(hh_id, neigh_ht_by_id, it, tmp) {
+    HASH_ITER(hh, arp_table, it, tmp) {
         ++j;
-        buf[j * 2] = it->addr;
+        buf[j * 2] = it->ip_addr;
         buf[j * 2 + 1] = 1;
     }
     broadcastIPPacket(IP_addr.sin_addr, MY_CONTROL_PROTOCOl, buf, len, ++bc_id);
@@ -165,9 +177,6 @@ int router_init() {
     RCPE(ret == -1, -1, "Error getting IP");
 
     bc_set = NULL;
-
-    neigh_ht_by_addr = NULL;
-    neigh_ht_by_id = NULL;
 
     host_by_addr = NULL;
     host_by_id = NULL;

@@ -1,9 +1,11 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <stdio.h>
 #include <errno.h>
 #include <netinet/ether.h>
 #include <netinet/ip.h>
+#include <arpa/inet.h>
 #include <stdlib.h>
 
 #define MY_CONTROL_PROTOCOl 0xFE
@@ -85,4 +87,14 @@ inline static int ip_hdr_len(const uint8_t *buf) {
     struct iphdr *hdr = (struct iphdr *)buf;
     return (hdr->ihl) << 2;
 }
+
+inline static void print_ip(FILE* file, uint32_t ip) {
+    char ip_addr[20];
+    inet_ntop(AF_INET, &ip, ip_addr, INET_ADDRSTRLEN);
+    fprintf(file, "%s", ip_addr);
+}
+inline static void print_mac(FILE* file, const uint8_t *mac) {
+    printf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
 #endif

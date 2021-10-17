@@ -26,6 +26,8 @@
 int sendFrame(const void *buf, int len, int ethtype,
               const void *destmac, int id);
 
+int broadcastFrame(const void *buf, int len, int ethtype, int id);
+
 /**
 * @brief Process a frame upon receiving it.
 * *
@@ -46,6 +48,6 @@ typedef int (*frameReceiveCallback)(const void *, int, int);
 * @return 0 on success, -1 on error.
 * @see frameReceiveCallback
 */
-int setFrameReceiveCallback(frameReceiveCallback callback);
+int setFrameReceiveCallback(frameReceiveCallback callback, uint16_t protocol);
 
 #endif

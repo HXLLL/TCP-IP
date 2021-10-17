@@ -1,8 +1,10 @@
+#include "uthash/uthash.h"
 #include "device.h"
 #include "ip.h"
 #include "utils.h"
 #include "packetio.h"
 #include "routing_table.h"
+#include "arp.h"
 
 #include <callback.h>
 #include <pthread.h>
@@ -18,6 +20,9 @@ int ip_init() {
     rt = (struct RT*)malloc(sizeof(struct RT));
     ret = rt_init(rt);
     RCPE(ret < 0, -1, "Error initiating routing table");
+
+    ret = arp_init();
+    RCPE(ret == -1, -1, "Error initializing ARP");
 
     return 0;
 }
@@ -47,9 +52,9 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest, const stru
     void *data = ip_raw_content(send_buffer);
     memcpy(data, buf, len);
 
-    struct Record rec;
-    rt_query(rt, next_hop, &rec);
-    sendFrame(send_buffer, total_len, ETH_P_IP, rec.nexthop_mac, rec.device);
+    struct arp_record *rec;
+    arp_query(next_hop.s_addr);
+    sendFrame(send_buffer, total_len, ETH_P_IP, &rec->mac_addr, rec->port);
 
     free(send_buffer);
     return 0;
@@ -79,9 +84,9 @@ int broadcastIPPacket(const struct in_addr src, int proto, const void *buf, int 
     void *data = ip_raw_content(send_buffer);
     memcpy(data, buf, len);
 
-    for (int i=0;i!=rt->cnt;++i) {
-        struct Record *rec = &rt->table[i];
-        sendFrame(send_buffer, total_len, ETH_P_IP, rec->nexthop_mac, rec->device);
+    struct arp_record *rec, *tmp;
+    HASH_ITER(hh, arp_table, rec, tmp) {
+        sendFrame(send_buffer, total_len, ETH_P_IP, &rec->mac_addr, rec->port);
     }
 
     free(send_buffer);
@@ -112,7 +117,7 @@ void IPCallbackWrapper(void *data, va_alist valist) {
 int setIPPacketReceiveCallback(IPPacketReceiveCallback callback) {
     callback_t cb;
     cb = alloc_callback(IPCallbackWrapper, callback);
-    setFrameReceiveCallback(cb);
+    setFrameReceiveCallback(cb, ETH_P_IP);
 }
 
 int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
