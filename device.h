@@ -10,15 +10,20 @@
 
 #include <pcap/pcap.h>
 
+struct MAC_addr {
+    uint8_t data[ETH_ALEN];
+};
+
 /* Constants */
 #define MAX_TRANSMIT_UNIT 1500
 #define MAX_DEVICES 255
-#define MAX_DEVICE_NAME 255
+#define MAX_DEVICE_NAME 16
 
 /* Global Variables */
 extern pcap_t *dev_handles[MAX_DEVICES];
 extern pcap_if_t *devinfo[MAX_DEVICES];
 extern char dev_names[MAX_DEVICES][MAX_DEVICE_NAME];
+extern struct MAC_addr dev_MAC[MAX_DEVICES];
 extern int total_dev;
 
 /**

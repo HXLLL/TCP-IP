@@ -10,9 +10,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#define __USE_MISC
+#include <features.h>
 #include <net/if.h>
-#undef __USE_MISC
 
 static char err_buf[PCAP_ERRBUF_SIZE];
 static pcap_if_t *alldev;
@@ -27,11 +26,14 @@ struct MAC_addr dev_MAC[MAX_DEVICES];
  * TODO: ugly, rewrite it
  ***/
 int get_MAC(const char *device, struct MAC_addr *res) {
+    int ret;
     char filename[255];
-    sprintf(filename, "/sys/class/net/%s/address");
+    sprintf(filename, "/sys/class/net/%s/address", device);
     FILE *addr_sysfile = fopen(filename, "r");
     RCPE(addr_sysfile == NULL, -1, "Error opening MAC address file");
-    fscanf(addr_sysfile, "%x:%x:%x:%x:%x:%x", &res->data[0], &res->data[1], &res->data[2], &res->data[3], &res->data[4], &res->data[5]);
+    ret = fscanf(addr_sysfile, "%x:%x:%x:%x:%x:%x", &res->data[0], &res->data[1], &res->data[2], &res->data[3], &res->data[4], &res->data[5]);
+    RCPE(ret != 6, -1, "Error reading MAC address");
+    fclose(addr_sysfile);
     return 0;
 }
 
@@ -66,7 +68,8 @@ int addDevice(const char *device) {
     }
 
     //get MAC address
-    get_MAC(device, &dev_MAC[total_dev]);
+    ret = get_MAC(device, &dev_MAC[total_dev]);
+    RCPE(ret == -1, -1, "Error getting MAC");
 
     pcap_t *pcap_handle;
     pcap_handle = pcap_create(device, err_buf);
