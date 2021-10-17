@@ -22,7 +22,7 @@ int ip_init() {
     return 0;
 }
 
-int sendIPPacket(const struct in_addr src, const struct in_addr dest,
+int sendIPPacket(const struct in_addr src, const struct in_addr dest, const struct in_addr next_hop,
                  int proto, const void *buf, int len) {
     size_t total_len = sizeof(struct iphdr) + len;
     uint8_t *send_buffer = malloc(total_len);
@@ -48,8 +48,41 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest,
     memcpy(data, buf, len);
 
     struct Record rec;
-    rt_query(rt, dest, &rec);
+    rt_query(rt, next_hop, &rec);
     sendFrame(send_buffer, total_len, ETH_P_IP, rec.nexthop_mac, rec.device);
+
+    free(send_buffer);
+    return 0;
+}
+
+int broadcastIPPacket(const struct in_addr src, int proto, const void *buf, int len, uint16_t broadcast_id) {
+    size_t total_len = sizeof(struct iphdr) + len;
+    uint8_t *send_buffer = malloc(total_len);
+    struct iphdr *hdr = (struct iphdr*)send_buffer;
+
+    hdr->version = 4;
+    hdr->ihl = 5;
+    hdr->tos = 0;
+    hdr->tot_len = htons(total_len);
+
+    hdr->id = broadcast_id;
+    hdr->frag_off = 0;
+
+    hdr->ttl = 5;
+    hdr->protocol = proto;
+
+    hdr->saddr = src.s_addr;
+    hdr->daddr = 0xffffffff;
+
+    compute_ip_checksum(hdr);
+
+    void *data = ip_raw_content(send_buffer);
+    memcpy(data, buf, len);
+
+    for (int i=0;i!=rt->cnt;++i) {
+        struct Record *rec = &rt->table[i];
+        sendFrame(send_buffer, total_len, ETH_P_IP, rec->nexthop_mac, rec->device);
+    }
 
     free(send_buffer);
     return 0;

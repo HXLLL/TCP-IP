@@ -13,5 +13,6 @@ struct LinkState {
 int linkstate_init(struct LinkState *ls, int size);
 int linkstate_update(struct LinkState *ls, int u,int v,int c);
 int linkstate_next_hop(struct LinkState *ls, int t);
+int linkstate_SPFA(struct LinkState *ls);
 
 #endif

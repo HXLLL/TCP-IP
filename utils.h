@@ -6,6 +6,11 @@
 #include <netinet/ip.h>
 #include <stdlib.h>
 
+#define MY_CONTROL_PROTOCOl 0xFE
+#define PROTO_LINKSTATE 0x01
+#define PROTO_ARP_REQUEST 0x02
+#define PROTO_ARP_ANSWER 0x03
+
 #define ADD_MOD(x, MOD)                                                        \
     do {                                                                       \
         ++x;                                                                   \

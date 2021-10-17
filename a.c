@@ -35,6 +35,6 @@ int main() {
     ret = setRoutingTable(dest, mask, dest_mac, "veth1");
     CPE(ret < 0, "Error setting routing table", ret);
 
-    ret = sendIPPacket(src, dest, 6, content, len);
+    ret = sendIPPacket(src, dest, dest, 6, content, len);
     CPE(ret < 0, "Error sending packet", ret);
 }

@@ -12,31 +12,34 @@ in an Ethernet II frame.
 #define INIT_TTL 5
 
 /****
-* @brief init ip 
-**/
+ * @brief init ip
+ **/
 int ip_init();
 
 /**
-* @brief Send an IP packet to specified host.
-* *
-* @param src Source IP address.
-* @param dest Destination IP address.
-* @param proto Value of 'protocol' field in IP header.
-* @param buf pointer to IP payload.
-* @param len Length of IP payload.
-* @return 0 on success, -1 on error.
-*/
-int sendIPPacket(const struct in_addr src, const struct in_addr dest,
+ * @brief Send an IP packet to specified host.
+ * *
+ * @param src Source IP address.
+ * @param dest Destination IP address.
+ * @param proto Value of 'protocol' field in IP header.
+ * @param buf pointer to IP payload.
+ * @param len Length of IP payload.
+ * @return 0 on success, -1 on error.
+ */
+int sendIPPacket(const struct in_addr src, const struct in_addr dest, const struct in_addr next_hop,
                  int proto, const void *buf, int len);
 
+int broadcastIPPacket(const struct in_addr src, int proto, const void *buf,
+                      int len, uint16_t broadcast_id);
+
 /**
-* @brief Process an IP packet upon receiving it.
-* *
-* @param buf Pointer to the packet.
-* @param len Length of the packet.
-* @return 0 on success, -1 on error.
-* @see addDevice
-*/
+ * @brief Process an IP packet upon receiving it.
+ * *
+ * @param buf Pointer to the packet.
+ * @param len Length of the packet.
+ * @return 0 on success, -1 on error.
+ * @see addDevice
+ */
 typedef int (*IPPacketReceiveCallback)(const void *buf, int len);
 
 /**
