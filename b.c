@@ -16,6 +16,8 @@
 
 int ip_callback(const void *data, int len) {
     printf("Receive data length: %d\n", len);
+    len -= ip_hdr_len(data);
+    data = ip_raw_content_const(data);
     if (len <= 255) {
         fwrite(data, 1, len, stdout);
     } else {

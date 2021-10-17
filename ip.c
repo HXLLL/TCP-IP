@@ -60,21 +60,18 @@ typedef int (*IPPacketReceiveCallback)(const void *buf, int len);
 void IPCallbackWrapper(void *data, va_alist valist) {
     int ret;
     IPPacketReceiveCallback ip_cb = (IPPacketReceiveCallback)data;
-    void *pkt_data, *eth_data, *ip_data;
+    void *eth_frame, *ip_frame;
     int len, dev_id;
 
     va_start_int(valist);
-    pkt_data = va_arg_ptr(valist, void*);
+    eth_frame = va_arg_ptr(valist, void*);
     len = va_arg_int(valist);
     dev_id = va_arg_int(valist);
     
-    eth_data = eth_raw_content(pkt_data);
-    len -= eth_hdr_len(pkt_data);
+    ip_frame = eth_raw_content(eth_frame);
+    len -= eth_hdr_len(eth_frame);
 
-    ip_data = ip_raw_content(eth_data);
-    len -= ip_hdr_len(eth_data);
-
-    ret = ip_cb(ip_data, len);
+    ret = ip_cb(ip_frame, len);
 
     va_return_int(valist, ret);
 }
