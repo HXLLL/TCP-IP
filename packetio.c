@@ -21,7 +21,7 @@ int sendFrame(const void *buf, int len, int ethtype,
     void *data = send_buffer + sizeof(struct ethhdr);
 
     memcpy(&hdr->h_dest, destmac, ETH_ALEN); // assume h_dest is big endian
-    memset(&hdr->h_source, 0, ETH_ALEN);     // doesn't need source
+    memcpy(&hdr->h_source, &dev_MAC[id], ETH_ALEN);
     hdr->h_proto = htons(ethtype);           // ethtype is little endian, need conversion
     memcpy(data, buf, len);                  // data need no conversion
 
