@@ -53,5 +53,6 @@ int addDevice(const char *device);
 int findDevice(const char *device);
 
 int get_IP(int id, struct sockaddr *res);
+int get_MAC(const char *device, struct MAC_addr *res);
 
 #endif

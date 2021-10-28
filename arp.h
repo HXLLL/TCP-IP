@@ -21,7 +21,7 @@ struct arp_record {
 
 extern struct arp_record *arp_table;
 
-int arp_init();
+int arp_init(uint32_t ip_addr, struct  MAC_addr mac_addr);
 struct arp_record *arp_query(uint32_t addr);
 int ARP_advertise();
 

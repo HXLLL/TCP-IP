@@ -40,9 +40,6 @@ int get_MAC(const char *device, struct MAC_addr *res) {
     return 0;
 }
 
-/*****
- * TODO: too ugly
- ****/
 int get_IP(int id, struct sockaddr *res) {
     for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
         if (p->addr->sa_family == AF_INET) {

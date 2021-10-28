@@ -2,7 +2,6 @@
 #include "device.h"
 #include "utils.h"
 #include "uthash/uthash.h"
-#include "arp.h"
 
 #include <unistd.h>
 #include <time.h>
@@ -72,8 +71,9 @@ void poll_packet() {
         pkt_data = pcap_next(dev_handles[i], &pkt_header); // non-blocking
         if (pkt_data != NULL) {
             struct ethhdr *hdr = (struct ethhdr*)pkt_data;
-            if (link_layer_callback[hdr->h_proto])
-                link_layer_callback[hdr->h_proto](pkt_data, pkt_header.caplen,
+            uint16_t proto = ntohs(hdr->h_proto);
+            if (link_layer_callback[proto])
+                link_layer_callback[proto](pkt_data, pkt_header.caplen,
                                                   i);
         }
     }
@@ -82,24 +82,12 @@ void poll_packet() {
 void *link_layer_daemon(void *args) {
     int ret;
 
-    struct timespec ARP_last, ARP_now;
-    double ARP_every = 1;
-
     while (1) {
         if (daemon_running == 0) break;                          // gracefully shutdown
-
-        clock_gettime(CLOCK_MONOTONIC, &ARP_now);
-        if (ARP_now.tv_sec - ARP_last.tv_sec >= ARP_every) {
-            ret = ARP_advertise();                              // need to move to ARP
-            RCPE(ret == -1, NULL, "Error advertising ARP");
-
-            ARP_last = ARP_now;
-        }
 
         poll_packet();
 
     }
-    free(args);
     return NULL;
 }
 

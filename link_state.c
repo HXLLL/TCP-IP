@@ -11,6 +11,10 @@ int linkstate_init(struct LinkState *ls, int size) {
     memset(ls->dis, -1, sizeof(int) * size);
     ls->dis[0] = 0;
 
+    ls->next_hop = (int *)malloc(sizeof(int) * size);
+    memset(ls->next_hop, -1, sizeof(ls->next_hop));
+    ls->next_hop[0] = 0;
+
     ls->c = (int **)malloc(sizeof(int *) * size);
     for (int i = 0; i != size; ++i) {
         ls->c[i] = (int *)malloc(sizeof(int) * size);

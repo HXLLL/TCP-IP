@@ -1,3 +1,4 @@
+//TODO: run arp 
 #include "arp.h"
 #include "device.h"
 #include "ip.h"
@@ -45,6 +46,7 @@ char dev_name[MAX_PORT][MAX_DEVICE_NAME];
 int dev_cnt;
 int dev_id[MAX_PORT];
 struct sockaddr_in IP_addr; // big endian
+struct MAC_addr mac_addr;
 struct bc_record *bc_set;
 struct host_record *host_by_addr, *host_by_id;
 struct LinkState *ls;
@@ -78,7 +80,7 @@ static inline uint32_t query_addr(int id) {
 }
 
 void forward_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
-    uint64_t bc_id = (uint64_t)hdr->daddr << 32 + hdr->id;
+    uint64_t bc_id = ((uint64_t)hdr->daddr << 32) + hdr->id;
     struct bc_record *bc_rec;
     HASH_FIND_PTR(bc_set, &bc_id, bc_rec);
     if (!bc_rec) { // not broadcasted before
@@ -166,15 +168,27 @@ void send_link_state() {
         buf[j * 2 + 1] = 1;
     }
     broadcastIPPacket(IP_addr.sin_addr, MY_CONTROL_PROTOCOl, buf, len, ++bc_id);
+
+    free(buf);
 }
 
 int router_init() {
     int ret;
 
+
+    my_init();
+    for (int i = 0; i != dev_cnt; ++i) {
+        dev_id[i] = addDevice(dev_name[i]);
+        CPE(dev_id[i] == -1, "Error adding device", dev_id[i]);
+    }
+
     ret = get_IP(
         dev_id[0],
         (struct sockaddr *)&IP_addr); // TODO: support multiple ip address
     RCPE(ret == -1, -1, "Error getting IP");
+
+    ret = get_MAC(dev_name[0], &mac_addr);
+    RCPE(ret == -1, -1, "Error getting MAC");
 
     bc_set = NULL;
 
@@ -185,7 +199,11 @@ int router_init() {
     struct host_record *host=new_host_record(IP_addr.sin_addr.s_addr, 0);
     add_host_record(host);
 
+    ls = malloc(sizeof(struct LinkState));
     linkstate_init(ls, MAX_NETWORK_SIZE);
+
+    ret = arp_init(IP_addr.sin_addr.s_addr, mac_addr);
+    RCPE(ret == -1, -1, "Error initializing ARP");
 
     return 0;
 }
@@ -193,11 +211,16 @@ int router_init() {
 int main(int argc, char *argv[]) {
     int ret, opt;
 
-    while ((opt = getopt(argc, argv, "d:")) != -1) { // only support -d
+    FILE* action_file = NULL;
+
+    while ((opt = getopt(argc, argv, "d:f:")) != -1) { // only support -d
         switch (opt) {
         case 'd':
             strncpy(dev_name[dev_cnt], optarg, MAX_DEVICE_NAME);
             ++dev_cnt;
+            break;
+        case 'f':
+            action_file = fopen(optarg, "r");
             break;
         default:
             printf("Usage: %s -d [device]\n", argv[0]);
@@ -205,19 +228,34 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    my_init();
-    for (int i = 0; i != dev_cnt; ++i) {
-        dev_id[i] = addDevice(dev_name[i]);
-        CPE(dev_id[i] == -1, "Error adding device", dev_id[i]);
-    }
-
     ret = router_init();
     CPE(ret == -1, "Error initiating router", ret);
 
     setIPPacketReceiveCallback(ip_callback);
 
-    while (1) {
-        usleep(1000000);
-        send_link_state();
+    if (action_file) {
+        int n; fscanf(action_file, "%d",&n);
+        for (int i=1;i<=n;++i) {
+            char act[20]; scanf("%s",act);
+            if (!strcmp(act, "sleep")) {
+                double duration;
+                fscanf(action_file, "%lf", &duration);
+                usleep(duration * 1000000);
+            } else if (!strcmp(act, "send")) {
+                char ip[20], msg[255]; scanf("%s %s", ip, msg);
+                struct in_addr dst;
+                inet_pton(AF_INET, ip, &dst);
+
+                return 0;
+
+                int len=strlen(msg);
+            }
+            usleep(1000000);
+        }
+    } else {
+        while (1) {
+            usleep(1000000);
+            send_link_state();
+        }
     }
 }
