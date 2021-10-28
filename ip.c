@@ -49,9 +49,9 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest,
     void *data = ip_raw_content(send_buffer);
     memcpy(data, buf, len);
 
-    struct Record *rec;
-    rt_query(rt, next_hop, rec);
-    sendFrame(send_buffer, total_len, ETH_P_IP, &rec->nexthop_mac, rec->device);
+    struct Record rec;
+    rt_query(rt, next_hop, &rec);
+    sendFrame(send_buffer, total_len, ETH_P_IP, &rec.nexthop_mac, rec.device);
 
     free(send_buffer);
     return 0;
@@ -115,6 +115,7 @@ int setIPPacketReceiveCallback(IPPacketReceiveCallback callback) {
     callback_t cb;
     cb = alloc_callback(IPCallbackWrapper, callback);
     setFrameReceiveCallback(cb, ETH_P_IP);
+    return 0;
 }
 
 int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
@@ -127,5 +128,5 @@ int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
 
     ret = rt_update(rt, &rec);
 
-    return 0;
+    return ret;
 }

@@ -26,6 +26,7 @@
         "condition_variable": "c",
         "arp.h": "c",
         "link_state.h": "c",
-        "errno.h": "c"
+        "errno.h": "c",
+        "uthash.h": "c"
     }
 }

@@ -71,7 +71,7 @@ struct Record *rt_insert(struct RT *rt, struct Record *rec) {
 int rt_update(struct RT *rt, struct Record *rec) {
     struct Record *t;
 
-    if (t = rt_find(rt, rec->dest, rec->mask)) {
+    if ((t = rt_find(rt, rec->dest, rec->mask))) {
         *t = *rec;
         return 0;
     } else {

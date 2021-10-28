@@ -1,5 +1,4 @@
 #include "device.h"
-#include "ip.h"
 #include "packetio.h"
 #include "routing_table.h"
 #include "utils.h"
@@ -24,36 +23,35 @@ struct MAC_addr dev_MAC[MAX_DEVICES];
 pthread_mutex_t dev_mutex[MAX_DEVICES];
 int total_dev;
 
+// TODO: check
 int get_MAC(int id, struct MAC_addr *res) {
     for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
         if (p->addr->sa_family == AF_PACKET) {
-            memcpy(res, (p->addr->sa_data)+10, ETH_ALEN);
-            printf("TODO");
+            memcpy(res, p->addr->sa_data+10, ETH_ALEN);
             return 0;
         }
     }
     return -1;
 }
 
-int get_IP(int id, struct sockaddr *res) {
+// TODO: check
+int get_IP(int id, uint32_t *res) {
     for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
         if (p->addr->sa_family == AF_INET) {
-            memcpy(res, p->addr, sizeof(struct sockaddr));
+            memcpy(res, p->addr->sa_data+2, 4);
             return 0;
         }
     }
     return -1;
 }
 
-int my_init() {
+int device_init() {
     int ret;
     ret = pcap_init(PCAP_CHAR_ENC_LOCAL, NULL);
     RCPE(ret != 0, -1, "Error initiating pcap");
 
     ret = pcap_findalldevs(&alldev, err_buf);
     RCPE(ret != 0, -1, "Error finding all devs");
-
-    ip_init();
 
     return 0;
 }
@@ -66,12 +64,14 @@ int addDevice(const char *device) {
     }
 
     // get devinfo
+    devinfo[total_dev] = NULL;
     for (pcap_if_t *p = alldev; p; p = p->next) {
         if (strncmp(device, p->name, MAX_DEVICE_NAME) == 0) {
             devinfo[total_dev] = p;
             break;
         }
     }
+    RCPE(devinfo[total_dev] == NULL, -1, "Cannot find device");
 
     // init mutex
     ret = pthread_mutex_init(&dev_mutex[total_dev], NULL);

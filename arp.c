@@ -6,15 +6,12 @@
 
 #include <stdlib.h>
 
-struct arp_record *arp_table;
-uint32_t my_ip;
-struct MAC_addr my_mac;
+struct arp_table *arp_t[MAX_DEVICES];
 
 struct arp_record* new_arp_record(uint32_t ip_addr, struct MAC_addr mac_addr, int port) {
     struct arp_record *rec = malloc(sizeof(struct arp_record));
     rec->ip_addr = ip_addr;
     memcpy(&rec->mac_addr, &mac_addr.data, ETH_HLEN);
-    rec->port = port;
     return rec;
 }
 
@@ -27,35 +24,43 @@ int arp_frame_handler(const void* buf, int len, int id) {
     printf("MAC: "); print_mac(stdout, data->sender_hw_addr.data); printf("\n");
     
     struct arp_record *res;
-    HASH_FIND_INT(arp_table, &data->sender_ip_addr, res);
+    HASH_FIND_INT(arp_t[id]->table, &data->sender_ip_addr, res);
     if (res) {
         res->mac_addr = data->sender_hw_addr;
-        res->port = id;
     } else {
         struct arp_record *rec = new_arp_record(data->sender_ip_addr, data->sender_hw_addr, id);
-        HASH_ADD_INT(arp_table, ip_addr, rec);
+        HASH_ADD_INT(arp_t[id]->table, ip_addr, rec);
     }
 
     return 0;
 }
 
-int arp_init(uint32_t ip_addr, struct  MAC_addr mac_addr) {
+int arp_init() {
     setFrameReceiveCallback(arp_frame_handler, ETH_P_ARP);
 
-    arp_table = NULL;
-
-    my_ip = ip_addr;
-    my_mac = mac_addr;
+    // set function in event loop
+    return 0;
 }
 
-int ARP_advertise() {
+int new_arp_table(int id) {
+    arp_t[id] = malloc(sizeof(struct arp_table));
+    arp_t[id]->device = id;
+    get_MAC(id, &arp_t[id]->local_mac_addr);
+    get_IP(id, &arp_t[id]->local_ip_addr);
+    arp_t[id]->table = NULL;
+    return 0;
+}
+
+int ARP_advertise(int id) {
     int ret;
     struct arp_data *data = (struct arp_data*)malloc(sizeof(struct arp_data));
 
-    data->sender_hw_addr = my_mac;
-    data->sender_ip_addr = my_ip;
+    data->sender_hw_addr = arp_t[id]->local_mac_addr;
+    data->sender_ip_addr = arp_t[id]->local_ip_addr;
 
     fprintf(stderr, "Advertised my mac address\n");
+    print_mac(stderr, arp_t[id]->local_mac_addr.data);
+    printf("\n");
 
     for (int i=0;i!=total_dev;++i) {
         ret = broadcastFrame(data, sizeof(struct arp_data), ETH_P_ARP, i);
@@ -67,8 +72,8 @@ int ARP_advertise() {
     return 0;
 }
 
-struct arp_record *arp_query(uint32_t addr) {
+struct arp_record *arp_query(int id, uint32_t addr) {
     struct arp_record *rec;
-    HASH_FIND_INT(arp_table, &addr, rec);
+    HASH_FIND_INT(arp_t[id]->table, &addr, rec);
     return rec;
 }

@@ -17,7 +17,7 @@
 #include <string.h>
 
 int main() {
-    my_init();
+    device_init();
     int ret;
 
     int a = addDevice("veth1");
@@ -25,7 +25,7 @@ int main() {
 
     char *content = "hi i'm bob";
     int len = strlen(content);
-    uint8_t dest_mac[6] = {0x22, 0xce, 0x5b, 0xfb, 0xe6, 0x05};
+    uint8_t dest_mac[6] = {0xb2, 0xc2, 0xe4, 0x2f, 0xe8, 0x28};
 
     struct in_addr src,dest, mask;
     inet_pton(AF_INET, "192.168.3.1", &src);

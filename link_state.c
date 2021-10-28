@@ -12,7 +12,7 @@ int linkstate_init(struct LinkState *ls, int size) {
     ls->dis[0] = 0;
 
     ls->next_hop = (int *)malloc(sizeof(int) * size);
-    memset(ls->next_hop, -1, sizeof(ls->next_hop));
+    memset(ls->next_hop, -1, sizeof(int) * size);
     ls->next_hop[0] = 0;
 
     ls->c = (int **)malloc(sizeof(int *) * size);
@@ -56,12 +56,14 @@ int linkstate_SPFA(struct LinkState *ls) {
     }
     free(q);
     free(in_queue);
+    return 0;
 }
 
 int linkstate_update(struct LinkState *ls, int u, int v, int c) {
     ls->c[u][v] = c;
     ls->c[v][u] = c;
     linkstate_SPFA(ls);
+    return 0;
 }
 
 int linkstate_next_hop(struct LinkState *ls, int t) { return ls->next_hop[t]; }

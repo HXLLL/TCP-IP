@@ -33,7 +33,7 @@ extern int total_dev;
  * *
  * @return 0 on success, -1 on error.
  */
-int my_init();
+int device_init();
 
 /**
  * @brief Add a device to the library for sending / receiving packets .
@@ -52,7 +52,7 @@ int addDevice(const char *device);
  */
 int findDevice(const char *device);
 
-int get_IP(int id, struct sockaddr *res);
+int get_IP(int id, uint32_t *res);
 int get_MAC(int id, struct MAC_addr *res);
 
 #endif

@@ -39,7 +39,7 @@ int ether_callback(const void *data, int len, int dev) {
 }
 
 int main() {
-    my_init();
+    device_init();
     int ret;
 
     int a = addDevice("veth2");
