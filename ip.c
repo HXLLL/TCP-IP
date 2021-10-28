@@ -1,5 +1,4 @@
 #include "ip.h"
-#include "arp.h"
 #include "device.h"
 #include "packetio.h"
 #include "routing_table.h"
@@ -50,9 +49,9 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest,
     void *data = ip_raw_content(send_buffer);
     memcpy(data, buf, len);
 
-    struct arp_record *rec;
-    arp_query(next_hop.s_addr);
-    sendFrame(send_buffer, total_len, ETH_P_IP, &rec->mac_addr, rec->port);
+    struct Record *rec;
+    rt_query(rt, next_hop, rec);
+    sendFrame(send_buffer, total_len, ETH_P_IP, &rec->nexthop_mac, rec->device);
 
     free(send_buffer);
     return 0;
@@ -83,9 +82,8 @@ int broadcastIPPacket(const struct in_addr src, int proto, const void *buf,
     void *data = ip_raw_content(send_buffer);
     memcpy(data, buf, len);
 
-    struct arp_record *rec, *tmp;
-    HASH_ITER(hh, arp_table, rec, tmp) {
-        sendFrame(send_buffer, total_len, ETH_P_IP, &rec->mac_addr, rec->port);
+    for (int i=0;i!=rt->cnt;++i) {
+        sendFrame(send_buffer, total_len, ETH_P_IP, rt->table[i].nexthop_mac, rt->table[i].device);
     }
 
     free(send_buffer);

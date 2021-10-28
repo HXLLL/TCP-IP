@@ -24,20 +24,15 @@ struct MAC_addr dev_MAC[MAX_DEVICES];
 pthread_mutex_t dev_mutex[MAX_DEVICES];
 int total_dev;
 
-/*****
- * get mac address
- * TODO: ugly, rewrite it
- ***/
-int get_MAC(const char *device, struct MAC_addr *res) {
-    int ret;
-    char filename[255];
-    sprintf(filename, "/sys/class/net/%s/address", device);
-    FILE *addr_sysfile = fopen(filename, "r");
-    RCPE(addr_sysfile == NULL, -1, "Error opening MAC address file");
-    ret = fscanf(addr_sysfile, "%x:%x:%x:%x:%x:%x", &res->data[0], &res->data[1], &res->data[2], &res->data[3], &res->data[4], &res->data[5]);
-    RCPE(ret != 6, -1, "Error reading MAC address");
-    fclose(addr_sysfile);
-    return 0;
+int get_MAC(int id, struct MAC_addr *res) {
+    for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
+        if (p->addr->sa_family == AF_PACKET) {
+            memcpy(res, (p->addr->sa_data)+10, ETH_ALEN);
+            printf("TODO");
+            return 0;
+        }
+    }
+    return -1;
 }
 
 int get_IP(int id, struct sockaddr *res) {
@@ -78,10 +73,6 @@ int addDevice(const char *device) {
         }
     }
 
-    // get MAC address
-    ret = get_MAC(device, &dev_MAC[total_dev]);
-    RCPE(ret == -1, -1, "Error getting MAC");
-    
     // init mutex
     ret = pthread_mutex_init(&dev_mutex[total_dev], NULL);
     RCPE(ret == -1, -1, "Error initiating mutex");
@@ -96,6 +87,10 @@ int addDevice(const char *device) {
     //    ret = pcap_set_timeout(pcap_handle, 100);
     //    RCPE(ret < 0, -1, "Error setting timeout");
 
+    // get MAC address
+    ret = get_MAC(total_dev, &dev_MAC[total_dev]);
+    RCPE(ret == -1, -1, "Error getting MAC");
+    
     ret = pcap_set_immediate_mode(pcap_handle, 1);
     RCPE(ret < 0, -1, "Error setting immediate mode");
 

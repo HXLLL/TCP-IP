@@ -182,14 +182,6 @@ int router_init() {
         CPE(dev_id[i] == -1, "Error adding device", dev_id[i]);
     }
 
-    ret = get_IP(
-        dev_id[0],
-        (struct sockaddr *)&IP_addr); // TODO: support multiple ip address
-    RCPE(ret == -1, -1, "Error getting IP");
-
-    ret = get_MAC(dev_name[0], &mac_addr);
-    RCPE(ret == -1, -1, "Error getting MAC");
-
     bc_set = NULL;
 
     host_by_addr = NULL;
