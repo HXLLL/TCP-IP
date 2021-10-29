@@ -26,8 +26,8 @@ int ip_init();
  * @param len Length of IP payload.
  * @return 0 on success, -1 on error.
  */
-int sendIPPacket(const struct in_addr src, const struct in_addr dest, const struct in_addr next_hop,
-                 int proto, const void *buf, int len);
+int sendIPPacket(const struct in_addr src, const struct in_addr dest, int proto,
+                 const void *buf, int len);
 
 int broadcastIPPacket(const struct in_addr src, int proto, const void *buf,
                       int len, uint16_t broadcast_id);

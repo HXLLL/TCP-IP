@@ -20,10 +20,9 @@ static inline void add_host_record(struct host_record *rec) {
     HASH_ADD(hh_gid, host_by_gid, gid, sizeof(int), rec);
 }
 static inline int add_host(uint32_t gid) {
-    int old_net_size = net_size;
-    struct host_record *rec = new_host_record(gid, net_size++);
+    struct host_record *rec = new_host_record(net_size, gid);
     add_host_record(rec);
-    return old_net_size;
+    return net_size++;
 }
 static inline int query_id(uint32_t gid) {
     struct host_record *rec;

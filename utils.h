@@ -43,6 +43,9 @@
         }                                                                      \
     while (0)
 
+#define DSEND(...) fprintf(stderr, "[SEND] " __VA_ARGS__), fprintf(stderr, "\n")
+#define DRECV(...) fprintf(stderr, "[RECV] " __VA_ARGS__), fprintf(stderr, "\n")
+
 /* Compute checksum for count bytes starting at addr, using one's complement of
  * one's complement sum*/
 static unsigned short compute_checksum(unsigned short *addr,

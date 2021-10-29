@@ -6,6 +6,8 @@
 
 #include <stdlib.h>
 
+const int ARP_DEBUG = 0;
+
 struct arp_table *arp_t[MAX_DEVICES];
 
 struct arp_record* new_arp_record(uint32_t ip_addr, struct MAC_addr mac_addr, int port) {
@@ -19,9 +21,11 @@ int arp_frame_handler(const void* buf, int len, int id) {
     const struct ethhdr *hdr = buf;
     const struct arp_data *data = eth_raw_content_const(buf);
 
-    printf("Received ARP frame\n");
-    printf("Addr: "); print_ip(stdout, data->sender_ip_addr); printf("\n");
-    printf("MAC: "); print_mac(stdout, data->sender_hw_addr.data); printf("\n");
+    if (ARP_DEBUG) {
+        printf("Received ARP frame\n");
+        printf("Addr: "); print_ip(stdout, data->sender_ip_addr); printf("\n");
+        printf("MAC: "); print_mac(stdout, data->sender_hw_addr.data); printf("\n");
+    }
     
     struct arp_record *res;
     HASH_FIND_INT(arp_t[id]->table, &data->sender_ip_addr, res);
@@ -58,9 +62,11 @@ int ARP_advertise(int id) {
     data->sender_hw_addr = arp_t[id]->local_mac_addr;
     data->sender_ip_addr = arp_t[id]->local_ip_addr;
 
-    fprintf(stderr, "Advertised my mac address\n");
-    print_mac(stderr, arp_t[id]->local_mac_addr.data);
-    printf("\n");
+    if (ARP_DEBUG) {
+        fprintf(stderr, "Advertised my mac address\n");
+        print_mac(stderr, arp_t[id]->local_mac_addr.data);
+        printf("\n");
+    }
 
     for (int i=0;i!=total_dev;++i) {
         ret = broadcastFrame(data, sizeof(struct arp_data), ETH_P_ARP, i);
