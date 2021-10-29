@@ -1,3 +1,20 @@
-send 192.168.3.3 hello
-sleep 5
-send 192.168.3.3 hello
+10
+nop
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+send 0 192.168.2.2 hello
+nop
+nop
+nop
+nop
+send 0 192.168.2.2 hello
+nop
+nop
+nop
