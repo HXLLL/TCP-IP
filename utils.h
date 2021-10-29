@@ -102,6 +102,9 @@ inline static void print_mac(FILE *file, const uint8_t *mac) {
             mac[3], mac[4], mac[5]);
 }
 
+inline static uint8_t  GET1B(void *base, size_t offset) {
+    return *(uint8_t *)(base + offset);
+}
 inline static uint16_t GET2B(void *base, size_t offset) {
     return *(uint16_t *)(base + offset);
 }
@@ -123,6 +126,11 @@ inline static uint32_t random_ex() {
         called = 1;
     }
     return rand();
+}
+inline static uint64_t gettime_ms() {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (t.tv_nsec + ((uint64_t)t.tv_sec * (int)1e9)) / 10000000;
 }
 
 #endif

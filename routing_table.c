@@ -6,8 +6,9 @@
 
 int rt_init(struct RT *rt) {
     rt->cnt = 0;
-    rt->capacity = 0;
-    rt->table = NULL;
+    rt->capacity = 1;
+    rt->table = malloc(sizeof(struct Record));
+    memset(rt->table, 0, sizeof(struct Record));
 
     return 0;
 }
@@ -62,7 +63,7 @@ struct Record *rt_insert(struct RT *rt, struct Record *rec) {
         rt_expand(rt);
     }
     memcpy(&rt->table[rt->cnt], rec, sizeof(struct Record));
-    return &rt->table[rt->cnt];
+    return &rt->table[rt->cnt++];
 }
 
 /****

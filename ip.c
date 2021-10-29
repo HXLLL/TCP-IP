@@ -25,6 +25,7 @@ int ip_init() {
 
 int sendIPPacket(const struct in_addr src, const struct in_addr dest, int proto,
                  const void *buf, int len) {
+    int ret;
     size_t total_len = sizeof(struct iphdr) + len;
     uint8_t *send_buffer = malloc(total_len);
     struct iphdr *hdr = (struct iphdr *)send_buffer;
@@ -49,7 +50,8 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest, int proto,
     memcpy(data, buf, len);
 
     struct Record rec;
-    rt_query(rt, dest, &rec);
+    ret = rt_query(rt, dest, &rec);
+    if (ret != 1) return -1;
     sendFrame(send_buffer, total_len, ETH_P_IP, &rec.nexthop_mac, rec.device);
 
     free(send_buffer);

@@ -27,14 +27,15 @@ int arp_frame_handler(const void* buf, int len, int id) {
         printf("MAC: "); print_mac(stdout, data->sender_hw_addr.data); printf("\n");
     }
     
-    struct arp_record *res;
-    HASH_FIND_INT(arp_t[id]->table, &data->sender_ip_addr, res);
-    if (res) {
-        res->mac_addr = data->sender_hw_addr;
+    struct arp_record *rec;
+    HASH_FIND_INT(arp_t[id]->table, &data->sender_ip_addr, rec);
+    if (rec) {
+        rec->mac_addr = data->sender_hw_addr;
     } else {
-        struct arp_record *rec = new_arp_record(data->sender_ip_addr, data->sender_hw_addr, id);
+        new_arp_record(data->sender_ip_addr, data->sender_hw_addr, id);
         HASH_ADD_INT(arp_t[id]->table, ip_addr, rec);
     }
+    rec->timestamp = gettime_ms();
 
     return 0;
 }

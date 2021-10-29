@@ -28,6 +28,7 @@
         "link_state.h": "c",
         "errno.h": "c",
         "uthash.h": "c",
-        "host_table.h": "c"
+        "host_table.h": "c",
+        "thread": "c"
     }
 }

@@ -97,7 +97,8 @@ void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
         DRECV("Unknown broadcast packet from %x", hdr->saddr);
     }
 
-    DSEND("Forward broadcast from %x, id: %d", hdr->saddr, hdr->id);
+    // DSEND("Forward broadcast from %d.%d.%d.%d, id: %d", GET1B(&hdr->saddr,3),GET1B(&hdr->saddr,2),GET1B(&hdr->saddr,1),GET1B(&hdr->saddr,0), hdr->id);
+
     struct in_addr src;
     src.s_addr = hdr->saddr;
     broadcastIPPacket(src, hdr->protocol, data,
@@ -145,11 +146,14 @@ int ip_callback(const void *frame, int len) {
 }
 
 void update_neigh_info() {
+    uint64_t cur_time = gettime_ms();
     for (int i=0;i!=total_dev;++i) {
-        neigh_size[i] = HASH_COUNT(arp_t[i]->table);
         struct arp_record *rec, *tmp;
         int j = 0;
         HASH_ITER(hh, arp_t[i]->table, rec, tmp) {
+
+            if (cur_time - rec->timestamp > ARP_EXPIRE) continue;
+
             uint32_t t_gid = query_gid_by_ip(rec->ip_addr);
             if (t_gid == -1) continue;
             neigh[i][j].ip = rec->ip_addr;
@@ -158,48 +162,7 @@ void update_neigh_info() {
             neigh[i][j].dis = 1;
             ++j;
         }
-    }
-}
-
-void process_link_state(void *data) {
-    update_neigh_info();
-
-    uint32_t s_gid = GET4B(data, 8);
-
-    DRECV("Received linkstate info from %u", s_gid);
-
-    int neigh_count = GET2B(data, 4);
-    int ip_count = GET2B(data, 6);
-
-    // determine source id
-    int sid, tid;
-    struct host_record *res;
-    HASH_FIND(hh_gid, host_by_gid, &s_gid, sizeof(uint32_t), res);
-    sid = res ? res->id : add_host(s_gid);
-
-    HASH_FIND(hh_gid, host_by_gid, &s_gid, sizeof(uint32_t), res);
-    memset(res->ip_list, 0, sizeof(res->ip_list));
-    memset(res->ip_mask_list, 0, sizeof(res->ip_mask_list));
-    res->ip_count = 0;
-
-    int j = 16;
-
-    // handle source attached ip
-    for (int i = 0; i != ip_count; ++i, j += 8) {
-        uint32_t s_ip = GET4B(data, j);
-        if (query_gid_by_ip(s_ip) == -1) {
-            add_ip_record(new_ip_record(s_ip, s_gid));
-        }
-        res->ip_list[i] = s_ip;
-        res->ip_mask_list[i] = GET4B(data, j + 4);
-    }
-
-    // initialize distance array
-    for (int i = 0; i != net_size; ++i)
-        ls->c[i][sid] = ls->c[sid][i] = -1;
-    for (int i=0;i!=net_size;++i) {
-        ls->c[i][0] = ls->c[0][i] = -1;
-        next_hop_port[i] = NULL;
+        neigh_size[i] = j;
     }
 
     // update linkstate for me
@@ -211,33 +174,47 @@ void process_link_state(void *data) {
             ls->c[0][tid] = ls->c[tid][0] = neigh[i][j].dis;
             next_hop_port[tid] = &neigh[i][j];
         }
+}
 
-    // update linkstate for src
+// Corner Case: might receive remote linkstate before neighbor
+void process_link_state(void *data) {
+    uint32_t s_gid = GET4B(data, 8);
+    int j = 16;
+
+    // DRECV("Received linkstate info from %u", s_gid);
+
+    int neigh_count = GET2B(data, 4);
+    int ip_count = GET2B(data, 6);
+
+    struct linkstate_record *rec = malloc(sizeof(struct linkstate_record));
+    rec->gid = s_gid;
+
+    rec->ip_count = ip_count;
+    rec->ip_list = malloc(ip_count * sizeof(uint32_t));
+    rec->ip_mask_list = malloc(ip_count * sizeof(uint32_t));
+
+    // acquire ip info
+    for (int i = 0; i != ip_count; ++i, j += 8) {
+        uint32_t s_ip = GET4B(data, j);
+        if (query_gid_by_ip(s_ip) == -1) {
+            add_ip_record(new_ip_record(s_ip, s_gid));
+        }
+        rec->ip_list[i] = s_ip;
+        rec->ip_mask_list[i] = GET4B(data, j+4);
+    }
+
+    rec->link_count = neigh_count;
+    rec->link_list = malloc(neigh_count * sizeof(uint32_t));
+    rec->dis_list = malloc(neigh_count * sizeof(uint32_t));
+
+    // acquire link info
     for (int i = 0; i != neigh_count; ++i, j += 8) {
         uint32_t t_gid = GET4B(data, j);
         uint32_t dis = GET4B(data, j + 4);
-        HASH_FIND(hh_gid, host_by_gid, &t_gid, sizeof(uint32_t), res);
-        if (res) {
-            tid = res->id;
-            ls->c[sid][tid] = ls->c[tid][sid] = dis; // assume links are
-        }                                            // bi-directional
+        rec->link_list[i] = t_gid;
+        rec->dis_list[i] = dis;
     }
 
-    linkstate_SPFA(ls);
-
-    struct ip_record *rec, *tmp;
-    HASH_ITER(hh_ip, ip2gid, rec, tmp) {
-        int port, next_hop;
-        int t_id = query_id(rec->gid);
-        next_hop = ls->next_hop[t_id];
-        port = next_hop_port[next_hop]->port;
-
-        struct in_addr dst, mask;
-        dst.s_addr = rec->ip;
-        mask.s_addr = 0xffffffff;
-
-        setRoutingTable(dst, mask, dev_MAC[next_hop].data, dev_names[port]);
-    }
 }
 /****
  *   -0------------16----------32----------48----------64
@@ -291,7 +268,7 @@ void send_link_state() {
         }
     }
 
-    DSEND("Advertise link state info with gid %u", router_gid);
+    // DSEND("Advertise link state info with gid %u", router_gid);
     initiate_broadcast(buf, len);
 
     free(buf);
@@ -323,25 +300,49 @@ int router_init() {
     add_host_record(host);
 
     ls = malloc(sizeof(struct LinkState));
-    linkstate_init(ls, MAX_NETWORK_SIZE);
+    linkstate_init(ls);
 
     ret = arp_init();
     RCPE(ret == -1, -1, "Error initializing ARP");
 
-    for (int i = 0; i != total_dev; ++i) {
+    for (int i = 0; i != total_dev; ++i)
         new_arp_table(i);
-    }
 
     fprintf(stderr, "Router Initialized, with GID=%u\n", router_gid);
 
     return 0;
 }
 
-void advertise_myself() {
-    for (int i = 0; i != total_dev; ++i) {
+
+void routine() {
+    static int tick = 0;
+    fprintf(stderr, "===============time: %u==================\n", ++tick);
+
+    for (int i = 0; i != total_dev; ++i)
         ARP_advertise(i);
+
+    // update linkstate, then update routing table based on linkstate
+    linkstate_update(ls);
+
+    struct ip_record *rec, *tmp;
+    HASH_ITER(hh_ip, ip2gid, rec, tmp) {
+        int port, next_hop;
+        int t_id = query_id(rec->gid);
+        next_hop = ls->next_hop[t_id];
+
+        if (next_hop == -1) continue;
+
+        port = next_hop_port[next_hop]->port;
+        struct in_addr dst, mask;
+        dst.s_addr = rec->ip;
+        mask.s_addr = 0xffffffff;
+
+        setRoutingTable(dst, mask, dev_MAC[next_hop].data, dev_names[port]);
     }
+
     send_link_state();
+
+    usleep(1000000);
 }
 
 int main(int argc, char *argv[]) {
@@ -370,7 +371,6 @@ int main(int argc, char *argv[]) {
 
     setIPPacketReceiveCallback(ip_callback);
 
-    uint32_t tick = 0;
     if (action_file) {
         int n;
         fscanf(action_file, "%d", &n);
@@ -393,19 +393,22 @@ int main(int argc, char *argv[]) {
 
                     len = strlen(msg);
 
-                    sendIPPacket(src, dst, 100, msg, len);
-                    fprintf(stderr, "send from port %d to ip %s: %s\n", port, ip, msg);
+                    ret = sendIPPacket(src, dst, 100, msg, len);
+                    if (ret == 0) {
+                        fprintf(stderr, "send from port %d to ip %s: %s\n",
+                                port, ip, msg);
+                    } else {
+                        fprintf(stderr, "Can't send to %s\n", ip);
+                    }
                 }
             }while (0);
 
-            usleep(1000000);
-            advertise_myself();
+            routine();
         }
     } else {
         while (1) {
-            fprintf(stderr, "===============time: %u==================\n", ++tick);
-            usleep(1000000);
-            advertise_myself();
+            routine();
         }
     }
+    while(1);
 }

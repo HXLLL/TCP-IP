@@ -6,6 +6,8 @@
 
 #include <stdlib.h>
 
+#define ARP_EXPIRE 2000  // in ms
+
 struct arp_data {
     struct MAC_addr sender_hw_addr;
     uint32_t sender_ip_addr;
@@ -15,6 +17,7 @@ struct arp_data {
 struct arp_record {
     uint32_t ip_addr;
     struct MAC_addr mac_addr;
+    uint64_t timestamp;
     UT_hash_handle hh;
 };
 

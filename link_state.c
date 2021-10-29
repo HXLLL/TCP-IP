@@ -5,21 +5,11 @@
 #include <string.h>
 
 int linkstate_init(struct LinkState *ls, int size) {
-    ls->size = size;
+    ls->size = 0;
+    ls->capacity = 0;
 
-    ls->dis = (int *)malloc(sizeof(int) * size);
-    memset(ls->dis, -1, sizeof(int) * size);
-    ls->dis[0] = 0;
+    ls->recs = NULL;
 
-    ls->next_hop = (int *)malloc(sizeof(int) * size);
-    memset(ls->next_hop, -1, sizeof(int) * size);
-    ls->next_hop[0] = 0;
-
-    ls->c = (int **)malloc(sizeof(int *) * size);
-    for (int i = 0; i != size; ++i) {
-        ls->c[i] = (int *)malloc(sizeof(int) * size);
-        memset(ls->c[i], -1, sizeof(int) * size);
-    }
     return 0;
 }
 
@@ -59,10 +49,67 @@ int linkstate_SPFA(struct LinkState *ls) {
     return 0;
 }
 
-int linkstate_update(struct LinkState *ls, int u, int v, int c) {
-    ls->c[u][v] = c;
-    ls->c[v][u] = c;
+void linkstate_free_rec(struct linkstate_record *rec) {
+    free(rec->ip_list);
+    free(rec->ip_mask_list);
+    free(rec);
+}
+
+int linkstate_add_rec(struct LinkState *ls, int gid,
+                      struct linkstate_record *rec) {
+    struct linkstate_record *r;
+    HASH_FIND(hh_gid, ls->recs, &gid, sizeof(uint32_t), r);
+
+    if (!r) {
+        rec->id = ls->size++;
+    } else {
+        rec->id = r->id;
+        linkstate_free_rec(r);
+    }
+
+    HASH_ADD(hh_gid, ls->recs, gid, sizeof(uint32_t), rec);
+    HASH_ADD(hh_id, ls->recs, id, sizeof(uint32_t), rec);
+
+    return 0;
+}
+
+int linkstate_update(struct LinkState *ls) {
+    uint64_t cur_time = gettime_ms();
+
+    // free old arrays
+    free(ls->dis);
+    free(ls->next_hop);
+    for (int i = 0; i != ls->capacity; ++i)
+        free(ls->c[i]);
+    free(ls->c);
+
+    int n = ls->size;
+    ls->capacity = n;
+
+    // realloc auxiliary arrays
+    ls->dis = malloc(n * sizeof(int));
+    ls->next_hop = malloc(n * sizeof(int));
+    ls->c = malloc(n * sizeof(int *));
+    for (int i = 0; i != n; ++i) {
+        ls->c[i] = malloc(n * sizeof(int));
+        for (int  j=0;j!=n;++j)
+            ls->c[i][j] = -1;
+    }
+
+    // update c
+    struct linkstate_record *rec, *tmp;
+    HASH_ITER(hh_id, ls->recs, rec, tmp) {
+        if (cur_time - rec->timestamp > LINKSTATE_EXPIRE) continue; // TODO: delete expired record
+        int s = rec->id;
+        for (int i=0;i!=rec->link_count;++i) {
+            int t = rec->link_list[i];
+            ls->c[s][t] = ls->c[t][s] = rec->dis_list[i];
+        }
+    }
+
+    // update dis and **next_hop**
     linkstate_SPFA(ls);
+
     return 0;
 }
 
