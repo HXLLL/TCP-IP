@@ -15,7 +15,6 @@
 #define MAX_NETWORK_SIZE 16
 #define MAX_PORT 16
 
-
 struct bc_record {
     uint64_t id;
     uint64_t timestamp;
@@ -172,6 +171,7 @@ void process_link_state(void *data) {
     int neigh_count = GET2B(data, 4);
     int ip_count = GET2B(data, 6);
 
+    // determine source id
     int sid, tid;
     struct host_record *res;
     HASH_FIND(hh_gid, host_by_gid, &s_gid, sizeof(uint32_t), res);
@@ -184,6 +184,7 @@ void process_link_state(void *data) {
 
     int j = 16;
 
+    // handle source attached ip
     for (int i = 0; i != ip_count; ++i, j += 8) {
         uint32_t s_ip = GET4B(data, j);
         if (query_gid_by_ip(s_ip) == -1) {
@@ -193,6 +194,7 @@ void process_link_state(void *data) {
         res->ip_mask_list[i] = GET4B(data, j + 4);
     }
 
+    // initialize distance array
     for (int i = 0; i != net_size; ++i)
         ls->c[i][sid] = ls->c[sid][i] = -1;
     for (int i=0;i!=net_size;++i) {
@@ -200,6 +202,7 @@ void process_link_state(void *data) {
         next_hop_port[i] = NULL;
     }
 
+    // update linkstate for me
     for (int i=0;i!=total_dev;++i)
         for (int j=0;j!=neigh_size[i];++j) {
             HASH_FIND(hh_gid, host_by_gid, &neigh[i][j].gid, sizeof(uint32_t), res);
@@ -209,6 +212,7 @@ void process_link_state(void *data) {
             next_hop_port[tid] = &neigh[i][j];
         }
 
+    // update linkstate for src
     for (int i = 0; i != neigh_count; ++i, j += 8) {
         uint32_t t_gid = GET4B(data, j);
         uint32_t dis = GET4B(data, j + 4);
@@ -220,6 +224,20 @@ void process_link_state(void *data) {
     }
 
     linkstate_SPFA(ls);
+
+    struct ip_record *rec, *tmp;
+    HASH_ITER(hh_ip, ip2gid, rec, tmp) {
+        int port, next_hop;
+        int t_id = query_id(rec->gid);
+        next_hop = ls->next_hop[t_id];
+        port = next_hop_port[next_hop]->port;
+
+        struct in_addr dst, mask;
+        dst.s_addr = rec->ip;
+        mask.s_addr = 0xffffffff;
+
+        setRoutingTable(dst, mask, dev_MAC[next_hop].data, dev_names[port]);
+    }
 }
 /****
  *   -0------------16----------32----------48----------64
@@ -319,6 +337,13 @@ int router_init() {
     return 0;
 }
 
+void advertise_myself() {
+    for (int i = 0; i != total_dev; ++i) {
+        ARP_advertise(i);
+    }
+    send_link_state();
+}
+
 int main(int argc, char *argv[]) {
     int ret, opt;
 
@@ -332,6 +357,7 @@ int main(int argc, char *argv[]) {
             break;
         case 'f':
             action_file = fopen(optarg, "r");
+            CPE(action_file == NULL, "Can't open action file", -1);
             break;
         default:
             printf("Usage: %s -d [device]\n", argv[0]);
@@ -350,31 +376,36 @@ int main(int argc, char *argv[]) {
         fscanf(action_file, "%d", &n);
         for (int i = 1; i <= n; ++i) {
             char act[20];
-            scanf("%s", act);
-            if (!strcmp(act, "sleep")) {
-                double duration;
-                fscanf(action_file, "%lf", &duration);
-                usleep(duration * 1000000);
-            } else if (!strcmp(act, "send")) {
-                char ip[20], msg[255];
-                scanf("%s %s", ip, msg);
-                struct in_addr dst;
-                inet_pton(AF_INET, ip, &dst);
+            fscanf(action_file, "%s", act);
+            do {
+                if (!strcmp(act, "nop")) {
+                    fprintf(stderr, "nop\n");
+                    break;
+                } else if (!strcmp(act, "send")) {
+                    int port, len;
+                    char ip[20], msg[255];
+                    fscanf(action_file, "%d %s %s", &port, ip, msg);
 
-                return 0;
+                    struct in_addr dst;
+                    inet_pton(AF_INET, ip, &dst);
+                    struct in_addr src;
+                    src.s_addr = dev_IP[port]; 
 
-                int len = strlen(msg);
-            }
+                    len = strlen(msg);
+
+                    sendIPPacket(src, dst, 100, msg, len);
+                    fprintf(stderr, "send from port %d to ip %s: %s\n", port, ip, msg);
+                }
+            }while (0);
+
             usleep(1000000);
+            advertise_myself();
         }
     } else {
         while (1) {
             fprintf(stderr, "===============time: %u==================\n", ++tick);
             usleep(1000000);
-            for (int i = 0; i != total_dev; ++i) {
-                ARP_advertise(i);
-            }
-            send_link_state();
+            advertise_myself();
         }
     }
 }

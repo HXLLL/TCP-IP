@@ -22,6 +22,7 @@ pcap_t *dev_handles[MAX_DEVICES];
 pcap_if_t *devinfo[MAX_DEVICES];
 pthread_mutex_t dev_mutex[MAX_DEVICES];
 
+char dev_names[MAX_DEVICES][MAX_DEVICE_NAME];
 struct MAC_addr dev_MAC[MAX_DEVICES];
 uint32_t dev_IP[MAX_DEVICES];
 uint32_t dev_IP_mask[MAX_DEVICE_NAME];
@@ -77,6 +78,7 @@ int addDevice(const char *device) {
         return -1;
     }
 
+    memcpy(dev_names[total_dev], device, len);
     // get devinfo
     devinfo[total_dev] = NULL;
     for (pcap_if_t *p = alldev; p; p = p->next) {
