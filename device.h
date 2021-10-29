@@ -25,6 +25,8 @@ extern pcap_t *dev_handles[MAX_DEVICES];
 extern pcap_if_t *devinfo[MAX_DEVICES];
 extern char dev_names[MAX_DEVICES][MAX_DEVICE_NAME];
 extern struct MAC_addr dev_MAC[MAX_DEVICES];
+extern uint32_t dev_IP[MAX_DEVICES];
+extern uint32_t dev_IP_mask[MAX_DEVICE_NAME];
 extern pthread_mutex_t dev_mutex[MAX_DEVICES];
 extern int total_dev;
 
@@ -52,7 +54,8 @@ int addDevice(const char *device);
  */
 int findDevice(const char *device);
 
-int get_IP(int id, uint32_t *res);
-int get_MAC(int id, struct MAC_addr *res);
+uint32_t get_IP(int id, uint32_t *res);
+uint32_t get_IP_mask(int id, uint32_t *res);
+uint32_t get_MAC(int id, struct MAC_addr *res);
 
 #endif

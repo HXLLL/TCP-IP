@@ -25,6 +25,7 @@ struct arp_table {
     struct arp_record *table;
 };
 
+extern struct arp_table *arp_t[MAX_DEVICES];
 int arp_init();
 int new_arp_table(int id);
 struct arp_record *arp_query(int id, uint32_t addr);

@@ -1,10 +1,10 @@
-// TODO: run arp
 #include "arp.h"
 #include "device.h"
 #include "ip.h"
 #include "link_state.h"
 #include "utils.h"
 
+#include <assert.h>
 #include "uthash/uthash.h"
 #include <getopt.h>
 #include <netinet/in.h>
@@ -14,6 +14,7 @@
 
 #define MAX_NETWORK_SIZE 16
 #define MAX_PORT 16
+
 
 struct bc_record {
     uint64_t id;
@@ -29,60 +30,35 @@ struct bc_record *new_bc_record(uint32_t addr, uint16_t id,
     return rec;
 }
 
-struct host_record {
-    uint32_t addr;
-    uint32_t id;
-    UT_hash_handle hh_addr;
-    UT_hash_handle hh_id;
-};
-struct host_record *new_host_record(uint32_t addr, uint32_t id) {
-    struct host_record *rec = malloc(sizeof(struct host_record));
-    memset(rec, 0, sizeof(struct host_record));
-    rec->addr = addr;
-    rec->id = id;
-    return rec;
-}
 
+// broadcast record
+struct bc_record *bc_set;
+int bc_id;
+
+// AS record
+int router_gid;
+struct host_record *host_by_id, *host_by_gid;
+struct ip_record *ip2gid;
+struct LinkState *ls;
+int net_size;
+#include "host_table.h" // to split file
+
+// neighbor info
+struct neigh_record {
+    uint32_t ip;
+    uint32_t gid;
+    uint32_t port;
+};
+struct neigh_record neigh[MAX_PORT][MAX_NETWORK_SIZE];
+int neigh_size[MAX_PORT];
+struct neigh_record *next_hop_port[MAX_NETWORK_SIZE];
+
+// port info
 char dev_name[MAX_PORT][MAX_DEVICE_NAME];
 int dev_cnt;
 int dev_id[MAX_PORT];
-struct sockaddr_in IP_addr; // big endian
-struct MAC_addr mac_addr;
-struct bc_record *bc_set;
-struct host_record *host_by_addr, *host_by_id;
-struct LinkState *ls;
-int d[MAX_NETWORK_SIZE];
-int bc_id;
-int net_size;
 
-void process_link_state(uint32_t s_addr, uint32_t *data);
-
-static inline void add_host_record(struct host_record *rec) {
-    HASH_ADD(hh_id, host_by_id, id, sizeof(int), rec);
-    HASH_ADD(hh_addr, host_by_addr, addr, sizeof(int), rec);
-}
-static inline int add_host(uint32_t addr) {
-    int old_net_size = net_size;
-    struct host_record *rec = new_host_record(addr, net_size++);
-    add_host_record(rec);
-    return net_size;
-}
-static inline int query_id(uint32_t addr) {
-    struct host_record *rec;
-    HASH_FIND(hh_addr, host_by_addr, &addr, sizeof(int), rec);
-    if (rec)
-        return rec->id;
-    else
-        return -1;
-}
-static inline uint32_t query_addr(int id) {
-    struct host_record *rec;
-    HASH_FIND(hh_id, host_by_id, &id, sizeof(int), rec);
-    if (rec)
-        return rec->addr;
-    else
-        return -1;
-}
+void process_link_state(void *data);
 
 void forward_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
     uint64_t bc_id = ((uint64_t)hdr->daddr << 32) + hdr->id;
@@ -108,22 +84,30 @@ int ip_callback(const void *frame, int len) {
     in_addr_dst.s_addr = hdr->daddr;
 
     do {
-        if (hdr->daddr == IP_addr.sin_addr.s_addr) {
+        int flag = -1;
+        for (int i = 0; i != dev_cnt; ++i)
+            if (hdr->daddr == dev_IP[i]) flag = i;
+        if (flag != -1) {
             fwrite(data, 1, len - ip_hdr_len(frame), stdout);
             fwrite("\n", 1, 1, stdout);
         } else if (hdr->daddr == 0xffffffff) { // broadcast
             if (hdr->protocol == MY_CONTROL_PROTOCOl) {
                 uint32_t my_protocol_type = *(uint32_t *)data;
                 if (my_protocol_type == PROTO_LINKSTATE) {
-                    process_link_state(hdr->saddr, (uint32_t *)data);
+                    process_link_state((uint32_t *)data);
                 }
             }
+            forward_broadcast(hdr, data, len);
         } else { // forward
-            int tid = query_id(hdr->daddr);
+            int t_gid = query_gid_by_ip(hdr->daddr);
+            int tid = t_gid != -1 ? query_id(t_gid) : -1;
             if (tid != -1 && linkstate_next_hop(ls, tid) != -1) { // forward it
-                int nxt = linkstate_next_hop(ls, tid);
+                int nxt = linkstate_next_hop(ls, tid);       // neigh id
+                assert(next_hop_port[nxt] != NULL);
                 struct in_addr in_addr_nxt;
-                in_addr_nxt.s_addr = query_addr(nxt);
+                int nxt_port = next_hop_port[nxt]->port;
+                in_addr_nxt.s_addr = next_hop_port[nxt]->ip;
+
                 sendIPPacket(in_addr_src, in_addr_dst, in_addr_nxt,
                              hdr->protocol, data, len - ip_hdr_len(frame));
             } else { // drop it
@@ -136,51 +120,139 @@ int ip_callback(const void *frame, int len) {
     return 0;
 }
 
-void process_link_state(uint32_t s_addr, uint32_t *data) {
-    int cnt = data[1];
-    data += 2;
+void update_neigh_info() {
+    for (int i=0;i!=dev_cnt;++i) {
+        neigh_size[i] = HASH_COUNT(arp_t[i]->table);
+        struct arp_record *rec, *tmp;
+        int j = 0;
+        HASH_ITER(hh, arp_t[i]->table, rec, tmp) {
+            uint32_t t_gid = query_gid_by_ip(rec->ip_addr);
+            if (t_gid == -1) continue;
+            neigh[i][j].ip = rec->ip_addr;
+            neigh[i][j].port = i;
+            neigh[i][j].gid = t_gid;
+            ++j;
+        }
+    }
+}
+
+void process_link_state(void *data) {
+    update_neigh_info();
+
+    uint32_t s_gid = GET4B(data, 8);
+
+    int neigh_count = GET2B(data, 4);
+    int ip_count = GET2B(data, 6);
 
     int sid, tid;
     struct host_record *res;
-    HASH_FIND(hh_addr, host_by_addr, &s_addr, sizeof(int), res);
-    if (!res)
-        sid = add_host(s_addr);
-    else
-        sid = res->id;
+    HASH_FIND(hh_gid, host_by_gid, &s_gid, sizeof(uint32_t), res);
+    sid = res ? add_host(s_gid) : res->id;
 
-    for (int i = 0; i != net_size; ++i) {
+    HASH_FIND(hh_gid, host_by_gid, &s_gid, sizeof(uint32_t), res);
+    memset(res->ip_list, 0, sizeof(res->ip_list));
+    memset(res->ip_mask_list, 0, sizeof(res->ip_mask_list));
+    res->ip_count = 0;
+
+    int j = 16;
+
+    for (int i = 0; i != ip_count; ++i, j += 8) {
+        uint32_t s_ip = GET4B(data, j);
+        if (query_gid_by_ip(s_ip) == -1) {
+            add_ip_record(new_ip_record(s_ip, s_gid));
+        }
+        res->ip_list[i] = s_ip;
+        res->ip_mask_list[i] = GET4B(data, j + 4);
+    }
+
+    for (int i = 0; i != net_size; ++i)
         ls->c[i][sid] = ls->c[sid][i] = -1;
+    for (int i=0;i!=net_size;++i) {
+        ls->c[i][0] = ls->c[0][i] = -1;
+        next_hop_port[i] = NULL;
     }
-    for (int i = 0; i != cnt; ++i) {
-        uint32_t addr = data[i * 2];
-        HASH_FIND(hh_addr, host_by_addr, &addr, sizeof(int), res);
-        if (!res)
-            tid = add_host(data[2 * i]);
-        else
+
+    for (int i=0;i!=dev_cnt;++i)
+        for (int j=0;j!=neigh_size[i];++j) {
+            HASH_FIND(hh_gid, host_by_gid, &neigh[i][j].gid, sizeof(uint32_t), res);
+            assert(res != NULL);
             tid = res->id;
-        ls->c[sid][tid] = ls->c[tid][sid] = 1; // assume links are
-                                               // bi-directional
+            ls->c[0][tid] = ls->c[tid][0] = 1;  // TODO: set a dis
+            next_hop_port[tid] = &neigh[i][j];
+        }
+
+    for (int i = 0; i != neigh_count; ++i, j += 8) {
+        uint32_t t_gid = GET4B(data, j);
+        uint32_t dis = GET4B(data, j + 4);
+        HASH_FIND(hh_gid, host_by_gid, &t_gid, sizeof(uint32_t), res);
+        if (res) {
+            tid = res->id;
+            ls->c[sid][tid] = ls->c[tid][sid] = dis; // assume links are
+        }                                            // bi-directional
     }
+
     linkstate_SPFA(ls);
 }
+/****
+ *   -0------------16----------32----------48----------64
+ *   -0------------2-----------4-----------6-----------8
+ *   0| PROTO_LINKSTATE        |neigh_count| ip_count  |
+ *   8| router_gid             | reserved              |
+ *  16| ip[1]                  | ip_mask[1]            |
+ *    | .....                                          |
+ *    | ip[ip_count]           | ip_mask[ip_count]     |
+ *    | neigh[1].addr          | neigh[cnt].dis        |
+ *    | .....                                          |
+ *    | neigh[neigh_count].addr| ~~~.dis               |
+ *    |
+ * */
 
 void send_link_state() {
-    // int count = HASH_COUNT(arp_table);
-    // int len=count * sizeof(int) + 8;
-    // uint32_t *buf = malloc(len);
-    // struct arp_record *it, *tmp;
-    // buf[0] = PROTO_LINKSTATE;
-    // buf[1] = count;
-    // int j = 0;
-    // HASH_ITER(hh, arp_table, it, tmp) {
-    // ++j;
-    // buf[j * 2] = it->ip_addr;
-    // buf[j * 2 + 1] = 1;
-    // }
-    // broadcastIPPacket(IP_addr.sin_addr, MY_CONTROL_PROTOCOl, buf, len,
-    // ++bc_id);
+    update_neigh_info();
 
-    // free(buf);
+    int neigh_count = 0;
+    for (int i = 0; i != dev_cnt; ++i) {
+        neigh_count += neigh_size[i];
+    }
+
+    int ip_count = dev_cnt;
+
+    int len = (neigh_count + ip_count) * sizeof(int) * 2 + 16;
+
+    void *buf = malloc(len);
+
+    PUT4B(buf, 0, PROTO_LINKSTATE);
+    PUT2B(buf, 4, neigh_count);
+    PUT2B(buf, 6, ip_count);
+
+    PUT4B(buf, 8, router_gid);
+    PUT4B(buf, 12, 0);
+
+    int j = 16;
+
+    for (int i = 0; i != ip_count; ++i) {
+        PUT4B(buf, j, dev_IP[i]);
+        PUT4B(buf, j + 4, dev_IP_mask[i]);
+        j += 8;
+    }
+
+    for (int i = 0; i != dev_cnt; ++i) {
+        for (int k=0;k!=neigh_size[i];++k) {
+            uint32_t t_gid = neigh[i][k].gid;
+            PUT4B(buf, j, t_gid);
+            PUT4B(buf, j + 4, 1);
+            j += 8;
+        }
+    }
+
+    ++bc_id;
+    for (int i = 0; i != dev_cnt; ++i) {
+        struct in_addr bc_src;
+        bc_src.s_addr = dev_IP[i];
+        broadcastIPPacket(bc_src, MY_CONTROL_PROTOCOl, buf, len, bc_id);
+    }
+
+    free(buf);
 }
 
 int router_init() {
@@ -198,11 +270,14 @@ int router_init() {
 
     bc_set = NULL;
 
-    host_by_addr = NULL;
+    host_by_gid = NULL;
     host_by_id = NULL;
 
+    // TODO: detect collision
+    router_gid = random_ex();
+
     net_size = 1;
-    struct host_record *host = new_host_record(IP_addr.sin_addr.s_addr, 0);
+    struct host_record *host = new_host_record(0, 0);
     add_host_record(host);
 
     ls = malloc(sizeof(struct LinkState));
@@ -211,7 +286,7 @@ int router_init() {
     ret = arp_init();
     RCPE(ret == -1, -1, "Error initializing ARP");
 
-    for (int i=0;i!=dev_cnt;++i) {
+    for (int i = 0; i != dev_cnt; ++i) {
         new_arp_table(i);
     }
 

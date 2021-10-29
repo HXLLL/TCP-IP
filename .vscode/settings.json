@@ -27,6 +27,7 @@
         "arp.h": "c",
         "link_state.h": "c",
         "errno.h": "c",
-        "uthash.h": "c"
+        "uthash.h": "c",
+        "host_table.h": "c"
     }
 }

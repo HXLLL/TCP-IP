@@ -1,12 +1,13 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <stdio.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/ether.h>
 #include <netinet/ip.h>
-#include <arpa/inet.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define MY_CONTROL_PROTOCOl 0xFE
 #define PROTO_LINKSTATE 0x01
@@ -88,13 +89,37 @@ inline static int ip_hdr_len(const uint8_t *buf) {
     return (hdr->ihl) << 2;
 }
 
-inline static void print_ip(FILE* file, uint32_t ip) {
+inline static void print_ip(FILE *file, uint32_t ip) {
     char ip_addr[20];
     inet_ntop(AF_INET, &ip, ip_addr, INET_ADDRSTRLEN);
     fprintf(file, "%s", ip_addr);
 }
-inline static void print_mac(FILE* file, const uint8_t *mac) {
-    fprintf(file, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+inline static void print_mac(FILE *file, const uint8_t *mac) {
+    fprintf(file, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2],
+            mac[3], mac[4], mac[5]);
+}
+
+inline static uint16_t GET2B(void *base, size_t offset) {
+    return *(uint16_t *)(base + offset);
+}
+inline static void PUT2B(void *base, size_t offset, uint16_t value) {
+    *(uint16_t *)(base + offset) = value;
+}
+inline static uint32_t GET4B(void *base, size_t offset) {
+    return *(uint32_t *)(base + offset);
+}
+inline static void PUT4B(void *base, size_t offset, uint32_t value) {
+    *(uint32_t *)(base + offset) = value;
+}
+inline static uint32_t random_ex() {
+    static int called = 0;
+    if (!called) {
+        struct timespec t;
+        clock_gettime(CLOCK_MONOTONIC, &t);
+        srand(t.tv_nsec);
+        called = 1;
+    }
+    return rand();
 }
 
 #endif
