@@ -1,6 +1,7 @@
 #include "link_state.h"
 #include "arp.h"
 #include "utils.h"
+#include "debug_utils.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -8,11 +9,12 @@
 #include <string.h>
 
 const int LINKSTATE_DEBUG = 1;
+const int LINKSTATE_DUMP = 1;
 
-int linkstate_SPFA(struct LinkState *ls) {
+int linkstate_SPFA(struct LinkState *ls, int *dis, int **c) {
     int *q = malloc(sizeof(int) * ls->size);
     int *in_queue = malloc(sizeof(int) * ls->size);
-    int *d = ls->dis, *nh = ls->next_hop;
+    int *d = dis, *nh = ls->next_hop;
     int head = 0, tail = 0, n = ls->size, cnt = 1;
     q[head] = 0;
     memset(d, 0x7f, sizeof(int) * n);
@@ -26,12 +28,12 @@ int linkstate_SPFA(struct LinkState *ls) {
         --cnt;
         ADD_MOD(tail, n);
         for (int i = 0; i != n; ++i) {
-            if (ls->c[u][i] != -1 && d[i] > d[u] + ls->c[u][i]) {
+            if (c[u][i] != -1 && d[i] > d[u] + c[u][i]) {
                 if (u == 0)
                     nh[i] = i;
                 else
                     nh[i] = nh[u];
-                d[i] = d[u] + ls->c[u][i];
+                d[i] = d[u] + c[u][i];
                 if (!in_queue[i]) {
                     ADD_MOD(head, n);
                     q[head] = i;
@@ -70,6 +72,32 @@ struct linkstate_record *new_linkstate_record(uint32_t ip_count,
     return rec;
 }
 
+void linkstate_free_rec(struct linkstate_record *rec) {
+    free(rec->ip_list);
+    free(rec->ip_mask_list);
+    free(rec);
+}
+
+int linkstate_add_rec(struct LinkState *ls, struct linkstate_record *rec) {
+    struct linkstate_record *r;
+    HASH_FIND(hh_gid, ls->recs_gid, &rec->gid, sizeof(uint32_t), r);
+
+    if (!r) {
+        rec->id = ls->size++;
+        fprintf(stderr, "[LinkState] new host detected, gid: %d\n", rec->gid);
+    } else {
+        rec->id = r->id;
+        HASH_DELETE(hh_gid, ls->recs_gid, r);
+        HASH_DELETE(hh_id, ls->recs_id, r);
+        linkstate_free_rec(r);
+    }
+
+    HASH_ADD(hh_gid, ls->recs_gid, gid, sizeof(uint32_t), rec);
+    HASH_ADD(hh_id, ls->recs_id, id, sizeof(uint32_t), rec);
+
+    return 0;
+}
+
 /*****
  * @brief update neigh info from arp table, then
  * update native linkstate record based on neigh info
@@ -87,6 +115,7 @@ void update_neigh_info(struct LinkState *ls) {
 
             uint32_t t_gid = query_gid_by_ip(ls, rec->ip_addr);
             if (t_gid == -1) continue;
+
             ls->neigh[i][j].ip = rec->ip_addr;
             ls->neigh[i][j].port = i;
             ls->neigh[i][j].gid = t_gid;
@@ -101,6 +130,7 @@ void update_neigh_info(struct LinkState *ls) {
     struct linkstate_record *rec =
         new_linkstate_record(ls->neigh_net_cnt, neigh_count);
     rec->gid = ls->router_gid;
+    rec->timestamp = -1;
 
     for (int i = 0; i != ls->neigh_net_cnt; ++i) {
         rec->ip_list[i] = dev_IP[i];
@@ -142,70 +172,56 @@ int linkstate_init(struct LinkState *ls, int neigh_net_cnt,
     return 0;
 }
 
-void linkstate_free_rec(struct linkstate_record *rec) {
-    free(rec->ip_list);
-    free(rec->ip_mask_list);
-    free(rec);
-}
-
-int linkstate_add_rec(struct LinkState *ls, struct linkstate_record *rec) {
-    struct linkstate_record *r;
-    HASH_FIND(hh_gid, ls->recs_gid, &rec->gid, sizeof(uint32_t), r);
-
-    if (!r) {
-        rec->id = ls->size++;
-        fprintf(stderr, "[LinkState] new host detected, gid: %d\n", rec->gid);
-    } else {
-        rec->id = r->id;
-        HASH_DELETE(hh_gid, ls->recs_gid, r);
-        HASH_DELETE(hh_id, ls->recs_id, r);
-        linkstate_free_rec(r);
-    }
-
-    HASH_ADD(hh_gid, ls->recs_gid, gid, sizeof(uint32_t), rec);
-    HASH_ADD(hh_id, ls->recs_id, id, sizeof(uint32_t), rec);
-
-    return 0;
-}
 
 int linkstate_update(struct LinkState *ls, int neigh_net_cnt,
                      struct arp_table **arp_t) {
     pthread_mutex_lock(&ls->ls_mutex);
 
     uint64_t cur_time = gettime_ms();
-
+    struct linkstate_record *rec, *tmp;
+    
+    // delete expired record, and their effect
+    HASH_ITER(hh_gid, ls->recs_gid, rec, tmp) {
+        if (rec->timestamp == -1) continue;
+        if (cur_time - rec->timestamp > LINKSTATE_EXPIRE) {
+            HASH_DELETE(hh_gid, ls->recs_gid, rec);
+            HASH_DELETE(hh_id, ls->recs_id, rec);
+            for (int i=0;i!=rec->ip_count;++i) {
+                struct ip_host_record *ip_rec;
+                HASH_FIND_INT(ls->ip_rec, &rec->ip_list[i], ip_rec);
+                HASH_DEL(ls->ip_rec, ip_rec);
+                free(ip_rec);
+            }
+            linkstate_free_rec(rec);
+        }
+    }
+    
     ls->neigh_net_cnt = neigh_net_cnt;
     ls->arp_t = arp_t;
 
+    // update neighbor info, delete expired host
     update_neigh_info(ls);
 
-    // free old arrays
     if (ls->capacity) {
-        free(ls->dis);
         free(ls->next_hop);
-        for (int i = 0; i != ls->capacity; ++i)
-            free(ls->c[i]);
-        free(ls->c);
     }
 
     int n = ls->size;
     ls->capacity = n;
 
     // realloc auxiliary arrays
-    ls->dis = malloc(n * sizeof(int));
     ls->next_hop = malloc(n * sizeof(int));
-    ls->c = malloc(n * sizeof(int *));
+
+    int *dis = malloc(n * sizeof(int));
+    int **c = malloc(n * sizeof(int *));
     for (int i = 0; i != n; ++i) {
-        ls->c[i] = malloc(n * sizeof(int));
+        c[i] = malloc(n * sizeof(int));
         for (int j = 0; j != n; ++j)
-            ls->c[i][j] = -1;
+            c[i][j] = -1;
     }
 
     // update c
-    struct linkstate_record *rec, *tmp;
     HASH_ITER(hh_gid, ls->recs_gid, rec, tmp) {
-        // if (cur_time - rec->timestamp > LINKSTATE_EXPIRE) continue; // TODO:
-        // delete expired record
         int s = rec->id;
         for (int i = 0; i != rec->link_count; ++i) {
             int t_gid = rec->link_list[i];
@@ -213,12 +229,14 @@ int linkstate_update(struct LinkState *ls, int neigh_net_cnt,
             HASH_FIND(hh_gid, ls->recs_gid, &t_gid, sizeof(uint32_t), rec2);
             if (!rec2) continue;
             int t = rec2->id;
-            ls->c[s][t] = ls->c[t][s] = rec->dis_list[i];
+            c[s][t] = c[t][s] = rec->dis_list[i];
         }
     }
 
     // update dis and **next_hop**
-    linkstate_SPFA(ls);
+    linkstate_SPFA(ls, dis, c);
+
+    linkstate_dump(ls);
 
     pthread_mutex_unlock(&ls->ls_mutex);
 
@@ -226,6 +244,8 @@ int linkstate_update(struct LinkState *ls, int neigh_net_cnt,
 }
 
 int linkstate_process_advertise(struct LinkState *ls, void *data) {
+    uint64_t cur_time = gettime_ms();
+
     pthread_mutex_lock(&ls->ls_mutex);
 
     uint32_t s_gid = GET4B(data, 8);
@@ -236,6 +256,7 @@ int linkstate_process_advertise(struct LinkState *ls, void *data) {
 
     struct linkstate_record *rec = new_linkstate_record(ip_count, neigh_count);
     rec->gid = s_gid;
+    rec->timestamp = cur_time;
 
     // acquire ip info
     for (int i = 0; i != ip_count; ++i, j += 8) {

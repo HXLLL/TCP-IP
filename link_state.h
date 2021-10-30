@@ -48,7 +48,6 @@ struct LinkState {
     pthread_mutex_t ls_mutex;
 
     int size, capacity;
-    int *dis, **c; // TODO: not need
 
     uint32_t router_gid;
 
@@ -71,7 +70,6 @@ struct LinkState {
     int *next_hop;
 };
 
-// TODO: review it
 /**
  * @brief initiate Linkstate Structure
  *
@@ -81,17 +79,6 @@ struct LinkState {
  */
 int linkstate_init(struct LinkState *ls, int neigh_net_cnt,
                    struct arp_table **arp_t);
-
-/**
- * @brief
- * add a host record to linkstate
- * thread safe
- *
- * @param ls linkstate structure
- * @param rec record to be added, whose ownership will be taken by linkstate
- * @return int 0 on success
- */
-int linkstate_add_rec(struct LinkState *ls, struct linkstate_record *rec);
 
 /**
  * @brief

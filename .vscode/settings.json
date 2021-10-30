@@ -29,6 +29,8 @@
         "errno.h": "c",
         "uthash.h": "c",
         "host_table.h": "c",
-        "thread": "c"
+        "thread": "c",
+        "inet.h": "c",
+        "debug_utils.h": "c"
     }
 }

@@ -65,4 +65,8 @@ with real Linux machines.
 int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
                     const void *nextHopMAC, const char *device);
 
+
+//! only for debug
+extern struct RT *rt;
+
 #endif

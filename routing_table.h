@@ -3,11 +3,14 @@
 
 #include <netinet/in.h>
 
+#define RT_EXPIRE 1000 // in ms
+
 struct Record {
     struct in_addr dest;
     struct in_addr mask;
     uint8_t nexthop_mac[6];
     uint8_t device;
+    uint64_t timestamp;
 };
 
 struct RT {

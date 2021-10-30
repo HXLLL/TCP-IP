@@ -33,8 +33,9 @@ int rt_match(struct Record *rec, struct in_addr addr) {
  * @return 1 when found, 0 when not found
  **/
 int rt_query(struct RT *rt, struct in_addr addr, struct Record *res) {
+    uint64_t cur_time = gettime_ms();
     for (int i = 0; i != rt->cnt; ++i) {
-        if (rt_match(&rt->table[i], addr)) {
+        if (rt_match(&rt->table[i], addr) && cur_time - rt->table[i].timestamp <= RT_EXPIRE) {
             if (res) memcpy(res, &rt->table[i], sizeof(struct Record));
             return 1;
         }

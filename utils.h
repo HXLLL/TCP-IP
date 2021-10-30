@@ -46,6 +46,16 @@
 #define DSEND(...) fprintf(stderr, "[SEND] " __VA_ARGS__), fprintf(stderr, "\n")
 #define DRECV(...) fprintf(stderr, "[RECV] " __VA_ARGS__), fprintf(stderr, "\n")
 
+static int _hxl_indent_level = 0;
+#define INDENT_INC() (++_hxl_indent_level)
+#define INDENT_DEC() (--_hxl_indent_level)
+#define INDENT_DEBUG(...)                                                      \
+    do {                                                                       \
+        for (int i = 0; i != _hxl_indent_level; ++i)                           \
+            fprintf(stderr, "    ");                                             \
+        fprintf(stderr,__VA_ARGS__);                                           \
+    } while (0)
+
 /* Compute checksum for count bytes starting at addr, using one's complement of
  * one's complement sum*/
 static unsigned short compute_checksum(unsigned short *addr,
@@ -102,7 +112,7 @@ inline static void print_mac(FILE *file, const uint8_t *mac) {
             mac[3], mac[4], mac[5]);
 }
 
-inline static uint8_t  GET1B(void *base, size_t offset) {
+inline static uint8_t GET1B(void *base, size_t offset) {
     return *(uint8_t *)(base + offset);
 }
 inline static uint16_t GET2B(void *base, size_t offset) {
@@ -130,7 +140,7 @@ inline static uint32_t random_ex() {
 inline static uint64_t gettime_ms() {
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
-    return (t.tv_nsec + ((uint64_t)t.tv_sec * (int)1e9)) / 10000000;
+    return (t.tv_nsec + ((uint64_t)t.tv_sec * (int)1e9)) / 1000000;
 }
 
 #endif

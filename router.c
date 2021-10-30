@@ -3,6 +3,7 @@
 #include "ip.h"
 #include "link_state.h"
 #include "utils.h"
+#include "debug_utils.h"
 
 #include "uthash/uthash.h"
 #include <assert.h>
@@ -15,8 +16,8 @@
 #define MAX_NETWORK_SIZE 16
 #define MAX_PORT 16
 
-const int LINKSTATE_ADVERTISE_DEBUG = 1;
-const int LINKSTATE_RECV_DEBUG = 1;
+const int LINKSTATE_ADVERTISE_DEBUG = 0;
+const int LINKSTATE_RECV_DEBUG = 0;
 const int FORWARD_DROP_DEBUG = 1;
 
 struct bc_record {
@@ -36,24 +37,13 @@ struct bc_record *new_bc_record(uint32_t addr, uint16_t id,
 struct bc_record *bc_set;
 int bc_id;
 
-// AS record
+// LinkState Structure
 struct LinkState *ls;
 
-// struct ip_record *new_ip_record(uint32_t ip, uint32_t gid) {
-//     struct ip_record *rec = malloc(sizeof(struct ip_record));
-//     memset(rec, 0, sizeof(struct ip_record));
-//     rec->gid = gid;
-//     rec->ip = ip;
-//     return rec;
-// }
-// static inline void add_ip_record(struct ip_record *rec) {
-//     HASH_ADD(hh_ip, ip2gid, ip, sizeof(int), rec);
-// }
-
 // port info
-char dev_name[MAX_PORT][MAX_DEVICE_NAME];
-int dev_cnt;
-int dev_id[MAX_PORT];
+char p_dev_name[MAX_PORT][MAX_DEVICE_NAME];
+int p_dev_cnt;
+int p_dev_id[MAX_PORT];
 
 void process_link_state(void *data);
 
@@ -203,6 +193,8 @@ void routine() {
 
     send_link_state();
 
+    rt_dump(rt);
+
     usleep(1000000);
 }
 
@@ -212,9 +204,9 @@ int router_init() {
     // init devices
     ret = device_init();
     RCPE(ret == -1, -1, "Error initializing devices");
-    for (int i = 0; i != dev_cnt; ++i) {
-        dev_id[i] = addDevice(dev_name[i]);
-        CPE(dev_id[i] == -1, "Error adding device", dev_id[i]);
+    for (int i = 0; i != p_dev_cnt; ++i) {
+        p_dev_id[i] = addDevice(p_dev_name[i]);
+        CPE(p_dev_id[i] == -1, "Error adding device", p_dev_id[i]);
     }
 
     // init arp
@@ -245,8 +237,8 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "d:f:")) != -1) { // only support -d
         switch (opt) {
         case 'd':
-            strncpy(dev_name[dev_cnt], optarg, MAX_DEVICE_NAME);
-            ++dev_cnt;
+            strncpy(p_dev_name[p_dev_cnt], optarg, MAX_DEVICE_NAME);
+            ++p_dev_cnt;
             break;
         case 'f':
             action_file = fopen(optarg, "r");

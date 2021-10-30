@@ -125,9 +125,13 @@ int setIPPacketReceiveCallback(IPPacketReceiveCallback callback) {
 int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
                     const void *nextHopMAC, const char *device) {
     int ret;
+    uint64_t cur_time = gettime_ms();
 
-    struct Record rec = {
-        .dest = dest, .mask = mask, .device = findDevice(device)};
+    struct Record rec = {.dest = dest,
+                         .mask = mask,
+                         .device = findDevice(device),
+                         .timestamp = cur_time};
+
     memcpy(rec.nexthop_mac, nextHopMAC, 6); // assume nextHopMAC is big endian
 
     ret = rt_update(rt, &rec);
