@@ -25,6 +25,7 @@ struct arp_table {
     int device;
     struct MAC_addr local_mac_addr;
     uint32_t local_ip_addr;
+    uint32_t local_ip_mask;
     struct arp_record *table;
 };
 

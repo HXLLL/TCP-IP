@@ -3,8 +3,8 @@
 #include "routing_table.h"
 #include "utils.h"
 
-#include <pthread.h>
 #include <pcap/pcap.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -29,9 +29,9 @@ uint32_t dev_IP_mask[MAX_DEVICE_NAME];
 
 // TODO: check
 uint32_t get_MAC(int id, struct MAC_addr *res) {
-    for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
+    for (pcap_addr_t *p = devinfo[id]->addresses; p; p = p->next) {
         if (p->addr->sa_family == AF_PACKET) {
-            memcpy(res, p->addr->sa_data+10, ETH_ALEN);
+            memcpy(res, p->addr->sa_data + 10, ETH_ALEN);
             return 0;
         }
     }
@@ -40,9 +40,9 @@ uint32_t get_MAC(int id, struct MAC_addr *res) {
 
 // TODO: check
 uint32_t get_IP(int id, uint32_t *res) {
-    for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
+    for (pcap_addr_t *p = devinfo[id]->addresses; p; p = p->next) {
         if (p->addr->sa_family == AF_INET) {
-            memcpy(res, p->addr->sa_data+2, 4);
+            memcpy(res, p->addr->sa_data + 2, 4);
             return 0;
         }
     }
@@ -51,9 +51,9 @@ uint32_t get_IP(int id, uint32_t *res) {
 
 // TODO: check
 uint32_t get_IP_mask(int id, uint32_t *res) {
-    for (pcap_addr_t *p=devinfo[id]->addresses; p; p=p->next) {
+    for (pcap_addr_t *p = devinfo[id]->addresses; p; p = p->next) {
         if (p->addr->sa_family == AF_INET) {
-            memcpy(res, p->netmask->sa_data+2, 4);
+            memcpy(res, p->netmask->sa_data + 2, 4);
             return 0;
         }
     }
@@ -110,11 +110,11 @@ int addDevice(const char *device) {
     // get IP address
     ret = get_IP(total_dev, &dev_IP[total_dev]);
     RCPE(ret == -1, -1, "Error getting IP");
-    
+
     // get IP address
     ret = get_IP_mask(total_dev, &dev_IP_mask[total_dev]);
     RCPE(ret == -1, -1, "Error getting IP mask");
-    
+
     ret = pcap_set_immediate_mode(pcap_handle, 1);
     RCPE(ret < 0, -1, "Error setting immediate mode");
 

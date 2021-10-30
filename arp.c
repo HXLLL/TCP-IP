@@ -52,6 +52,7 @@ int new_arp_table(int id) {
     arp_t[id]->device = id;
     get_MAC(id, &arp_t[id]->local_mac_addr);
     get_IP(id, &arp_t[id]->local_ip_addr);
+    get_IP_mask(id, &arp_t[id]->local_ip_mask);
     arp_t[id]->table = NULL;
     return 0;
 }
