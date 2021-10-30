@@ -4,8 +4,8 @@
 #include "link_state.h"
 #include "utils.h"
 
-#include <assert.h>
 #include "uthash/uthash.h"
+#include <assert.h>
 #include <getopt.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -28,19 +28,38 @@ struct bc_record *new_bc_record(uint32_t addr, uint16_t id,
     rec->timestamp = timestamp;
     return rec;
 }
-
-
 // broadcast record
 struct bc_record *bc_set;
 int bc_id;
 
 // AS record
 int router_gid;
-struct host_record *host_by_id, *host_by_gid;
-struct ip_record *ip2gid;
 struct LinkState *ls;
-int net_size;
-#include "host_table.h" // to split file
+
+struct ip_record {
+    uint32_t gid;
+    uint32_t ip;
+    UT_hash_handle hh_ip;
+};
+struct ip_record *ip2gid;
+struct ip_record *new_ip_record(uint32_t ip, uint32_t gid) {
+    struct ip_record *rec = malloc(sizeof(struct ip_record));
+    memset(rec, 0, sizeof(struct ip_record));
+    rec->gid = gid;
+    rec->ip = ip;
+    return rec;
+}
+static inline void add_ip_record(struct ip_record *rec) {
+    HASH_ADD(hh_ip, ip2gid, ip, sizeof(int), rec);
+}
+static inline uint32_t query_gid_by_ip(uint32_t ip) {
+    struct ip_record *rec;
+    HASH_FIND(hh_ip, ip2gid, &ip, sizeof(int), rec);
+    if (rec)
+        return rec->gid;
+    else
+        return -1;
+}
 
 // neighbor info
 struct neigh_record {
@@ -48,10 +67,18 @@ struct neigh_record {
     uint32_t gid;
     int port;
     int dis;
+    struct MAC_addr mac;
 };
 struct neigh_record neigh[MAX_PORT][MAX_NETWORK_SIZE];
 int neigh_size[MAX_PORT];
-struct neigh_record *next_hop_port[MAX_NETWORK_SIZE];
+
+struct neigh_record *get_neigh_by_gid(int gid) {
+    for (int i = 0; i != total_dev; ++i)
+        for (int j = 0; j != neigh_size[i]; ++j) {
+            if (neigh[i][j].gid == gid) return &neigh[i][j];
+        }
+    return NULL;
+}
 
 // port info
 char dev_name[MAX_PORT][MAX_DEVICE_NAME];
@@ -61,7 +88,6 @@ int dev_id[MAX_PORT];
 void process_link_state(void *data);
 
 void initiate_broadcast(void *buf, int len) {
-
     ++bc_id;
 
     // use port 0 to broadcast, TODO: find a more elegant way
@@ -82,7 +108,7 @@ void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
     struct bc_record *bc_rec;
     HASH_FIND_PTR(bc_set, &bc_id, bc_rec);
 
-    if (bc_rec) return;
+    if (bc_rec) return; // seen this packet before
 
     struct bc_record *set_bc_id =
         new_bc_record(hdr->saddr, hdr->id, 0); // TODO: add timestamp
@@ -97,12 +123,21 @@ void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
         DRECV("Unknown broadcast packet from %x", hdr->saddr);
     }
 
-    // DSEND("Forward broadcast from %d.%d.%d.%d, id: %d", GET1B(&hdr->saddr,3),GET1B(&hdr->saddr,2),GET1B(&hdr->saddr,1),GET1B(&hdr->saddr,0), hdr->id);
+    // DSEND("Forward broadcast from %d.%d.%d.%d, id: %d",
+    // GET1B(&hdr->saddr,3),GET1B(&hdr->saddr,2),GET1B(&hdr->saddr,1),GET1B(&hdr->saddr,0),
+    // hdr->id);
 
     struct in_addr src;
     src.s_addr = hdr->saddr;
     broadcastIPPacket(src, hdr->protocol, data,
                       len - ip_hdr_len((uint8_t *)hdr), hdr->id);
+}
+
+int is_for_me(uint32_t addr) {
+    int flag = -1;
+    for (int i = 0; i != total_dev; ++i)
+        if (addr == dev_IP[i]) flag = i;
+    return flag;
 }
 
 int ip_callback(const void *frame, int len) {
@@ -113,29 +148,30 @@ int ip_callback(const void *frame, int len) {
     in_addr_dst.s_addr = hdr->daddr;
 
     do {
-        int flag = -1;
-        for (int i = 0; i != total_dev; ++i)
-            if (hdr->daddr == dev_IP[i]) flag = i;
-        if (flag != -1) {
+        if (is_for_me(hdr->daddr) != -1) {
             DRECV("Recv message from %x", in_addr_src.s_addr);
 
             fwrite(data, 1, len - ip_hdr_len(frame), stdout);
             fwrite("\n", 1, 1, stdout);
-        } else if (hdr->daddr == 0xffffffff) { // broadcast
-            handle_broadcast(hdr, data, len);
-        } else { // forward
-            int t_gid = query_gid_by_ip(hdr->daddr);
-            int tid = t_gid != -1 ? query_id(t_gid) : -1;
-            if (tid != -1 && linkstate_next_hop(ls, tid) != -1) { // forward it
-                int nxt = linkstate_next_hop(ls, tid);       // neigh id
-                assert(next_hop_port[nxt] != NULL);
-                struct in_addr in_addr_nxt;
-                int nxt_port = next_hop_port[nxt]->port;
-                in_addr_nxt.s_addr = next_hop_port[nxt]->ip;
 
-                DSEND("Forward from %x to %x, to port %d", hdr->saddr, hdr->daddr, nxt_port);
-                sendIPPacket(in_addr_src, in_addr_dst,
-                             hdr->protocol, data, len - ip_hdr_len(frame));
+        } else if (hdr->daddr == 0xffffffff) { // broadcast
+
+            handle_broadcast(hdr, data, len);
+
+        } else { // forward
+
+            int t_gid = query_gid_by_ip(hdr->daddr);
+            int nxt = t_gid != -1 ? linkstate_next_hop(ls, t_gid) : -1;
+            if (nxt != -1) { // forward it
+                struct in_addr in_addr_nxt;
+                struct neigh_record *rec = get_neigh_by_gid(nxt);
+                int nxt_port = rec->port;
+                in_addr_nxt.s_addr = rec->ip;
+
+                DSEND("Forward from %x to %x, to port %d", hdr->saddr,
+                      hdr->daddr, nxt_port);
+                sendIPPacket(in_addr_src, in_addr_dst, hdr->protocol, data,
+                             len - ip_hdr_len(frame));
             } else { // drop it
                 DSEND("Drop packet from %x to %x", hdr->saddr, hdr->daddr);
             }
@@ -145,14 +181,20 @@ int ip_callback(const void *frame, int len) {
     return 0;
 }
 
+/*****
+ * @brief update neigh info from arp table, then
+ * update native linkstate record based on neigh info
+ */
 void update_neigh_info() {
     uint64_t cur_time = gettime_ms();
-    for (int i=0;i!=total_dev;++i) {
+    uint32_t neigh_count = 0;
+
+    for (int i = 0; i != total_dev; ++i) {
         struct arp_record *rec, *tmp;
         int j = 0;
         HASH_ITER(hh, arp_t[i]->table, rec, tmp) {
 
-            if (cur_time - rec->timestamp > ARP_EXPIRE) continue;
+            // if (cur_time - rec->timestamp > ARP_EXPIRE) continue;
 
             uint32_t t_gid = query_gid_by_ip(rec->ip_addr);
             if (t_gid == -1) continue;
@@ -160,20 +202,29 @@ void update_neigh_info() {
             neigh[i][j].port = i;
             neigh[i][j].gid = t_gid;
             neigh[i][j].dis = 1;
+            neigh[i][j].mac = rec->mac_addr;
             ++j;
         }
         neigh_size[i] = j;
+        neigh_count += j;
     }
 
-    // update linkstate for me
-    for (int i=0;i!=total_dev;++i)
-        for (int j=0;j!=neigh_size[i];++j) {
-            HASH_FIND(hh_gid, host_by_gid, &neigh[i][j].gid, sizeof(uint32_t), res);
-            assert(res != NULL);
-            tid = res->id;
-            ls->c[0][tid] = ls->c[tid][0] = neigh[i][j].dis;
-            next_hop_port[tid] = &neigh[i][j];
+    struct linkstate_record *rec = new_linkstate_record(total_dev, neigh_count);
+    rec->gid = router_gid;
+
+    for (int i = 0; i != total_dev; ++i) {
+        rec->ip_list[i] = dev_IP[i];
+        rec->ip_mask_list[i] = dev_IP_mask[i];
+    }
+
+    for (int i = 0, k = 0; i != total_dev; ++i) {
+        for (int j = 0; j != neigh_size[i]; ++j) {
+            rec->link_list[k] = neigh[i][j].gid;
+            rec->dis_list[k++] = neigh[i][j].dis;
         }
+    }
+
+    linkstate_add_rec(ls, rec);
 }
 
 // Corner Case: might receive remote linkstate before neighbor
@@ -181,17 +232,13 @@ void process_link_state(void *data) {
     uint32_t s_gid = GET4B(data, 8);
     int j = 16;
 
-    // DRECV("Received linkstate info from %u", s_gid);
+    DRECV("Received linkstate info from %u", s_gid);
 
     int neigh_count = GET2B(data, 4);
     int ip_count = GET2B(data, 6);
 
-    struct linkstate_record *rec = malloc(sizeof(struct linkstate_record));
+    struct linkstate_record *rec = new_linkstate_record(ip_count, neigh_count);
     rec->gid = s_gid;
-
-    rec->ip_count = ip_count;
-    rec->ip_list = malloc(ip_count * sizeof(uint32_t));
-    rec->ip_mask_list = malloc(ip_count * sizeof(uint32_t));
 
     // acquire ip info
     for (int i = 0; i != ip_count; ++i, j += 8) {
@@ -200,12 +247,8 @@ void process_link_state(void *data) {
             add_ip_record(new_ip_record(s_ip, s_gid));
         }
         rec->ip_list[i] = s_ip;
-        rec->ip_mask_list[i] = GET4B(data, j+4);
+        rec->ip_mask_list[i] = GET4B(data, j + 4);
     }
-
-    rec->link_count = neigh_count;
-    rec->link_list = malloc(neigh_count * sizeof(uint32_t));
-    rec->dis_list = malloc(neigh_count * sizeof(uint32_t));
 
     // acquire link info
     for (int i = 0; i != neigh_count; ++i, j += 8) {
@@ -215,7 +258,9 @@ void process_link_state(void *data) {
         rec->dis_list[i] = dis;
     }
 
+    linkstate_add_rec(ls, rec);
 }
+
 /****
  *   -0------------16----------32----------48----------64
  *   -0------------2-----------4-----------6-----------8
@@ -229,16 +274,14 @@ void process_link_state(void *data) {
  *    | neigh[neigh_count].addr| ~~~.dis               |
  *    |
  * */
-
 void send_link_state() {
     update_neigh_info();
 
+    int ip_count = total_dev;
     int neigh_count = 0;
     for (int i = 0; i != total_dev; ++i) {
         neigh_count += neigh_size[i];
     }
-
-    int ip_count = total_dev;
 
     int len = (neigh_count + ip_count) * sizeof(int) * 2 + 16;
 
@@ -260,7 +303,7 @@ void send_link_state() {
     }
 
     for (int i = 0; i != total_dev; ++i) {
-        for (int k=0;k!=neigh_size[i];++k) {
+        for (int k = 0; k != neigh_size[i]; ++k) {
             uint32_t t_gid = neigh[i][k].gid;
             PUT4B(buf, j, t_gid);
             PUT4B(buf, j + 4, 1);
@@ -268,51 +311,32 @@ void send_link_state() {
         }
     }
 
-    // DSEND("Advertise link state info with gid %u", router_gid);
+    DSEND("Advertise link state info with gid %u", router_gid);
     initiate_broadcast(buf, len);
 
     free(buf);
 }
 
-int router_init() {
-    int ret;
+void update_routing_table() {
+    struct ip_record *rec, *tmp;
+    HASH_ITER(hh_ip, ip2gid, rec, tmp) {
+        int port, next_hop;
 
-    ret = device_init();
-    RCPE(ret == -1, -1, "Error initializing devices");
-    for (int i = 0; i != dev_cnt; ++i) {
-        dev_id[i] = addDevice(dev_name[i]);
-        CPE(dev_id[i] == -1, "Error adding device", dev_id[i]);
+        next_hop = linkstate_next_hop(ls, rec->gid);
+        if (next_hop == -1) continue;
+
+        struct neigh_record *neigh_rec = get_neigh_by_gid(next_hop);
+        if (!neigh_rec) continue;
+
+        port = neigh_rec->port;
+
+        struct in_addr dst, mask;
+        dst.s_addr = rec->ip;
+        mask.s_addr = 0xffffffff;
+
+        setRoutingTable(dst, mask, neigh_rec->mac.data, dev_names[port]);
     }
-
-    ret = ip_init();
-    RCPE(ret == -1, -1, "Error initializing ip");
-
-    bc_set = NULL;
-
-    host_by_gid = NULL;
-    host_by_id = NULL;
-
-    // TODO: detect collision
-    router_gid = random_ex();
-
-    net_size = 1;
-    struct host_record *host = new_host_record(0, 0);
-    add_host_record(host);
-
-    ls = malloc(sizeof(struct LinkState));
-    linkstate_init(ls);
-
-    ret = arp_init();
-    RCPE(ret == -1, -1, "Error initializing ARP");
-
-    for (int i = 0; i != total_dev; ++i)
-        new_arp_table(i);
-
-    fprintf(stderr, "Router Initialized, with GID=%u\n", router_gid);
-
-    return 0;
 }
-
 
 void routine() {
     static int tick = 0;
@@ -324,25 +348,49 @@ void routine() {
     // update linkstate, then update routing table based on linkstate
     linkstate_update(ls);
 
-    struct ip_record *rec, *tmp;
-    HASH_ITER(hh_ip, ip2gid, rec, tmp) {
-        int port, next_hop;
-        int t_id = query_id(rec->gid);
-        next_hop = ls->next_hop[t_id];
-
-        if (next_hop == -1) continue;
-
-        port = next_hop_port[next_hop]->port;
-        struct in_addr dst, mask;
-        dst.s_addr = rec->ip;
-        mask.s_addr = 0xffffffff;
-
-        setRoutingTable(dst, mask, dev_MAC[next_hop].data, dev_names[port]);
-    }
+    update_routing_table();
 
     send_link_state();
 
     usleep(1000000);
+}
+
+int router_init() {
+    int ret;
+
+    // init devices
+    ret = device_init();
+    RCPE(ret == -1, -1, "Error initializing devices");
+    for (int i = 0; i != dev_cnt; ++i) {
+        dev_id[i] = addDevice(dev_name[i]);
+        CPE(dev_id[i] == -1, "Error adding device", dev_id[i]);
+    }
+
+    // init arp
+    ret = arp_init();
+    RCPE(ret == -1, -1, "Error initializing ARP");
+    for (int i = 0; i != total_dev; ++i)
+        new_arp_table(i);
+
+    // init ip layer
+    ret = ip_init();
+    RCPE(ret == -1, -1, "Error initializing ip");
+
+    // init broadcast set
+    bc_set = NULL;
+
+    // TODO: detect collision
+    router_gid = random_ex();
+
+    // init linkstate
+    ls = malloc(sizeof(struct LinkState));
+    linkstate_init(ls);
+
+    update_neigh_info();
+
+    fprintf(stderr, "Router Initialized, with GID=%u\n", router_gid);
+
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -369,6 +417,7 @@ int main(int argc, char *argv[]) {
     ret = router_init();
     CPE(ret == -1, "Error initiating router", ret);
 
+    fprintf(stderr, "Start listening...\n");
     setIPPacketReceiveCallback(ip_callback);
 
     if (action_file) {
@@ -389,7 +438,7 @@ int main(int argc, char *argv[]) {
                     struct in_addr dst;
                     inet_pton(AF_INET, ip, &dst);
                     struct in_addr src;
-                    src.s_addr = dev_IP[port]; 
+                    src.s_addr = dev_IP[port];
 
                     len = strlen(msg);
 
@@ -401,7 +450,7 @@ int main(int argc, char *argv[]) {
                         fprintf(stderr, "Can't send to %s\n", ip);
                     }
                 }
-            }while (0);
+            } while (0);
 
             routine();
         }
@@ -410,5 +459,6 @@ int main(int argc, char *argv[]) {
             routine();
         }
     }
-    while(1);
+    while (1)
+        ;
 }

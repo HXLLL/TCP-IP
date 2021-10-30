@@ -32,7 +32,7 @@ int arp_frame_handler(const void* buf, int len, int id) {
     if (rec) {
         rec->mac_addr = data->sender_hw_addr;
     } else {
-        new_arp_record(data->sender_ip_addr, data->sender_hw_addr, id);
+        rec = new_arp_record(data->sender_ip_addr, data->sender_hw_addr, id);
         HASH_ADD_INT(arp_t[id]->table, ip_addr, rec);
     }
     rec->timestamp = gettime_ms();
