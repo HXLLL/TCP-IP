@@ -49,6 +49,7 @@ struct LinkState *ls;
 char p_dev_name[MAX_PORT][MAX_DEVICE_NAME];
 int p_dev_cnt;
 int p_dev_id[MAX_PORT];
+uint32_t p_gid = -1;
 
 void process_link_state(void *data);
 
@@ -244,7 +245,7 @@ int router_init() {
 
     // init linkstate
     ls = malloc(sizeof(struct LinkState));
-    linkstate_init(ls, total_dev, arp_t);
+    linkstate_init(ls, total_dev, arp_t, p_gid);
 
     return 0;
 }
@@ -254,8 +255,11 @@ int main(int argc, char *argv[]) {
 
     FILE *action_file = NULL;
 
-    while ((opt = getopt(argc, argv, "d:f:")) != -1) {
+    while ((opt = getopt(argc, argv, "d:f:g:")) != -1) {
         switch (opt) {
+        case 'g':
+            p_gid = strtol(optarg, NULL, 10);
+            break;
         case 'd':
             strncpy(p_dev_name[p_dev_cnt], optarg, MAX_DEVICE_NAME);
             ++p_dev_cnt;

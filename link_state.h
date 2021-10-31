@@ -78,7 +78,7 @@ struct LinkState {
  * 0 on sccuess
  */
 int linkstate_init(struct LinkState *ls, int neigh_net_cnt,
-                   struct arp_table **arp_t);
+                   struct arp_table **arp_t, uint32_t gid);
 
 /**
  * @brief

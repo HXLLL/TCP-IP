@@ -18,7 +18,7 @@ sudo ./connectNS h2 h3 veth21 veth22 192.168.2
 sudo ./connectNS h3 h4 veth31 veth32 192.168.3
 sudo ./connectNS h2 h5 veth41 veth42 192.168.4
 sudo ./connectNS h5 h6 veth51 veth52 192.168.5
-sudo ./connectNS h6 h3 veth61 veth62 192.168.6
+sudo ./connectNS h3 h6 veth61 veth62 192.168.6
 
 for i in $(seq 1 $hosts_cnt); do
     sudo ./execNS h$i iptables -P INPUT DROP

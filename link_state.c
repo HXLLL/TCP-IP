@@ -8,28 +8,29 @@
 #include <stdlib.h>
 #include <string.h>
 
-const int LINKSTATE_DEBUG = 1;
-const int LINKSTATE_DUMP = 1;
+const int LINKSTATE_DEBUG = 0;
+const int LINKSTATE_DUMP = 0;
+const int LINKSTATE_DUMP_ALL_DIS = 1;
 
-int linkstate_SPFA(struct LinkState *ls, int *dis, int **c) {
+int linkstate_SPFA_with_start_point(struct LinkState *ls, int *dis, int **c, int s) {
     int *q = malloc(sizeof(int) * ls->size);
     int *in_queue = malloc(sizeof(int) * ls->size);
     int *d = dis, *nh = ls->next_hop;
     int head = 0, tail = 0, n = ls->size, cnt = 1;
-    q[head] = 0;
+    q[head] = s;
     memset(d, 0x7f, sizeof(int) * n);
     memset(in_queue, 0, sizeof(int) * n);
     memset(ls->next_hop, -1, sizeof(int) * n);
-    in_queue[0] = 1;
-    nh[0] = 0;
-    d[0] = 0;
+    in_queue[s] = 1;
+    nh[s] = s;
+    d[s] = 0;
     while (cnt != 0) {
         int u = q[tail];
         --cnt;
         ADD_MOD(tail, n);
         for (int i = 0; i != n; ++i) {
             if (c[u][i] != -1 && d[i] > d[u] + c[u][i]) {
-                if (u == 0)
+                if (u == s)
                     nh[i] = i;
                 else
                     nh[i] = nh[u];
@@ -46,6 +47,9 @@ int linkstate_SPFA(struct LinkState *ls, int *dis, int **c) {
     free(q);
     free(in_queue);
     return 0;
+}
+int linkstate_SPFA(struct LinkState *ls, int *dis, int **c) {
+    return linkstate_SPFA_with_start_point(ls, dis, c, 0);
 }
 
 uint32_t query_gid_by_ip(struct LinkState *ls, uint32_t ip) {
@@ -148,14 +152,18 @@ void update_neigh_info(struct LinkState *ls) {
 }
 
 int linkstate_init(struct LinkState *ls, int neigh_net_cnt,
-                   struct arp_table **arp_t) {
+                   struct arp_table **arp_t, uint32_t gid) {
     pthread_mutex_init(&ls->ls_mutex, NULL);
 
     ls->size = 0;
     ls->capacity = 0;
 
-    // TODO: detect collision
-    ls->router_gid = random_ex();
+    if (gid == -1) {
+        // TODO: detect collision
+        ls->router_gid = random_ex();
+    } else {
+        ls->router_gid = gid;
+    }
 
     ls->neigh_net_cnt = neigh_net_cnt;
     ls->arp_t = arp_t;
@@ -238,6 +246,19 @@ int linkstate_update(struct LinkState *ls, int neigh_net_cnt,
 
     if (LINKSTATE_DUMP) {
         linkstate_dump(ls);
+    }
+
+    if (LINKSTATE_DUMP_ALL_DIS) {
+        struct linkstate_record *rec, *tmp;
+        HASH_ITER(hh_gid, ls->recs_gid, rec, tmp) {
+            linkstate_SPFA_with_start_point(ls, dis, c, rec->id);
+            fprintf(stderr, "from %d:\t\t", rec->gid);
+            struct linkstate_record *rec2, *tmp2;
+            HASH_ITER(hh_gid, ls->recs_gid, rec2, tmp2) {
+                fprintf(stderr, "to %d:%d\t", rec2->gid, dis[rec2->id]);
+            }
+            fprintf(stderr, "\n");
+        }
     }
 
     pthread_mutex_unlock(&ls->ls_mutex);
