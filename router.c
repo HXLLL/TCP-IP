@@ -20,6 +20,10 @@
 const int LINKSTATE_ADVERTISE_DEBUG = 0;
 const int LINKSTATE_RECV_DEBUG = 0;
 const int FORWARD_DROP_DEBUG = 1;
+const int BROADCAST_DEBUG = 0;
+
+const int RT_DEBUG_DUMP = 0;
+const int ARP_DEBUG_DUMP = 0;
 
 struct bc_record {
     uint64_t id;
@@ -52,8 +56,6 @@ void initiate_broadcast(void *buf, int len) {
     ++bc_id;
     uint64_t cur_time = gettime_ms();
 
-    // use port 0 to broadcast, TODO: find a more elegant way
-    // for (int i = 0; i != total_dev; ++i) {
     struct in_addr bc_src;
     bc_src.s_addr = dev_IP[0];
 
@@ -62,7 +64,6 @@ void initiate_broadcast(void *buf, int len) {
     HASH_ADD_PTR(bc_set, id, set_bc_id);
 
     broadcastIPPacket(bc_src, MY_CONTROL_PROTOCOl, buf, len, bc_id);
-    // }
 }
 
 void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
@@ -90,9 +91,11 @@ void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
         DRECV("Unknown broadcast packet from %x", hdr->saddr);
     }
 
-    // DSEND("Forward broadcast from %d.%d.%d.%d, id: %d",
-    // GET1B(&hdr->saddr,3),GET1B(&hdr->saddr,2),GET1B(&hdr->saddr,1),GET1B(&hdr->saddr,0),
-    // hdr->id);
+    if (BROADCAST_DEBUG) {
+        DSEND("Forward broadcast from %d.%d.%d.%d, id: %d",
+        GET1B(&hdr->saddr,3),GET1B(&hdr->saddr,2),GET1B(&hdr->saddr,1),GET1B(&hdr->saddr,0),
+        hdr->id);
+    }
 
     struct in_addr src;
     src.s_addr = hdr->saddr;
@@ -114,6 +117,7 @@ int ip_callback(const void *frame, int len) {
     struct in_addr in_addr_src, in_addr_dst;
     in_addr_src.s_addr = hdr->saddr;
     in_addr_dst.s_addr = hdr->daddr;
+
     do {
         if (is_for_me(hdr->daddr) != -1) {
             DRECV("Recv message from %x", in_addr_src.s_addr);
@@ -199,10 +203,14 @@ void routine() {
 
     send_link_state();
 
-    rt_dump(rt);
+    if (RT_DEBUG_DUMP) {
+        rt_dump(rt);
+    }
 
-    for (int i=0;i!=total_dev;++i) {
-        arp_dump(arp_t[i]);
+    if (ARP_DEBUG_DUMP) {
+        for (int i = 0; i != total_dev; ++i) {
+            arp_dump(arp_t[i]);
+        }
     }
 
     usleep(1000000);
@@ -244,7 +252,7 @@ int main(int argc, char *argv[]) {
 
     FILE *action_file = NULL;
 
-    while ((opt = getopt(argc, argv, "d:f:")) != -1) { // only support -d
+    while ((opt = getopt(argc, argv, "d:f:")) != -1) {
         switch (opt) {
         case 'd':
             strncpy(p_dev_name[p_dev_cnt], optarg, MAX_DEVICE_NAME);

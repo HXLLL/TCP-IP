@@ -27,7 +27,6 @@ struct MAC_addr dev_MAC[MAX_DEVICES];
 uint32_t dev_IP[MAX_DEVICES];
 uint32_t dev_IP_mask[MAX_DEVICE_NAME];
 
-// TODO: check
 uint32_t get_MAC(int id, struct MAC_addr *res) {
     for (pcap_addr_t *p = devinfo[id]->addresses; p; p = p->next) {
         if (p->addr->sa_family == AF_PACKET) {
@@ -38,7 +37,6 @@ uint32_t get_MAC(int id, struct MAC_addr *res) {
     return -1;
 }
 
-// TODO: check
 uint32_t get_IP(int id, uint32_t *res) {
     for (pcap_addr_t *p = devinfo[id]->addresses; p; p = p->next) {
         if (p->addr->sa_family == AF_INET) {
@@ -49,7 +47,6 @@ uint32_t get_IP(int id, uint32_t *res) {
     return -1;
 }
 
-// TODO: check
 uint32_t get_IP_mask(int id, uint32_t *res) {
     for (pcap_addr_t *p = devinfo[id]->addresses; p; p = p->next) {
         if (p->addr->sa_family == AF_INET) {
