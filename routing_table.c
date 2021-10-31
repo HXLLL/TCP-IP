@@ -34,11 +34,20 @@ int rt_match(struct Record *rec, struct in_addr addr) {
  **/
 int rt_query(struct RT *rt, struct in_addr addr, struct Record *res) {
     uint64_t cur_time = gettime_ms();
+    int p = -1;
+    uint32_t res_mask = 0;
     for (int i = 0; i != rt->cnt; ++i) {
-        if (rt_match(&rt->table[i], addr) && cur_time - rt->table[i].timestamp <= RT_EXPIRE) {
-            if (res) memcpy(res, &rt->table[i], sizeof(struct Record));
-            return 1;
+        if (rt_match(&rt->table[i], addr) && (
+            cur_time - rt->table[i].timestamp <= RT_EXPIRE || rt->table[i].timestamp == -1)) {
+            if ((rt->table[i].mask.s_addr & res_mask) == res_mask) {
+                res_mask = rt->table[i].mask.s_addr;
+                p = i;
+            }
         }
+    }
+    if (p != -1) {
+        if (res) memcpy(res, &rt->table[p], sizeof(struct Record));
+        return 1;
     }
     return 0;
 }
@@ -47,9 +56,11 @@ int rt_query(struct RT *rt, struct in_addr addr, struct Record *res) {
  * @brief exact match with addr and mask
  * @return specified record when found, NULL otherwise
  **/
-struct Record *rt_find(struct RT *rt, struct in_addr addr, struct in_addr mask) {
+struct Record *rt_find(struct RT *rt, struct in_addr addr,
+                       struct in_addr mask) {
     for (int i = 0; i != rt->cnt; ++i) {
-        if (rt->table[i].dest.s_addr == addr.s_addr && rt->table[i].mask.s_addr == mask.s_addr) {
+        if (rt->table[i].dest.s_addr == addr.s_addr &&
+            rt->table[i].mask.s_addr == mask.s_addr) {
             return &rt->table[i];
         }
     }

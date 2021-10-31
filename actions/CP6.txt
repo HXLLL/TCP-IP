@@ -1,0 +1,19 @@
+10
+nop
+route 192.168.0.0 255.255.0.0 veth12 ff:ff:ff:ff:ff:ff
+nop
+send 192.168.2.1 192.168.2.2 hello
+nop
+route 192.168.2.0 255.255.255.0 veth21 ff:ff:ff:ff:ff:ff
+nop
+send 192.168.2.1 192.168.2.2 hello
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop

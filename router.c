@@ -25,6 +25,8 @@ const int BROADCAST_DEBUG = 0;
 const int RT_DEBUG_DUMP = 0;
 const int ARP_DEBUG_DUMP = 0;
 
+const int RUN_LINKSTATE = 0;
+
 struct bc_record {
     uint64_t id;
     uint64_t timestamp;
@@ -59,8 +61,7 @@ void initiate_broadcast(void *buf, int len) {
     struct in_addr bc_src;
     bc_src.s_addr = dev_IP[0];
 
-    struct bc_record *set_bc_id =
-        new_bc_record(bc_src.s_addr, bc_id, cur_time);
+    struct bc_record *set_bc_id = new_bc_record(bc_src.s_addr, bc_id, cur_time);
     HASH_ADD_PTR(bc_set, id, set_bc_id);
 
     broadcastIPPacket(bc_src, MY_CONTROL_PROTOCOl, buf, len, bc_id);
@@ -85,7 +86,9 @@ void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
     if (hdr->protocol == MY_CONTROL_PROTOCOl) {
         uint32_t my_protocol_type = *(uint32_t *)data;
         if (my_protocol_type == PROTO_LINKSTATE) {
-            process_link_state((uint32_t *)data);
+            if (RUN_LINKSTATE) {
+                process_link_state((uint32_t *)data);
+            }
         }
     } else {
         DRECV("Unknown broadcast packet from %x", hdr->saddr);
@@ -93,8 +96,8 @@ void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
 
     if (BROADCAST_DEBUG) {
         DSEND("Forward broadcast from %d.%d.%d.%d, id: %d",
-        GET1B(&hdr->saddr,3),GET1B(&hdr->saddr,2),GET1B(&hdr->saddr,1),GET1B(&hdr->saddr,0),
-        hdr->id);
+              GET1B(&hdr->saddr, 3), GET1B(&hdr->saddr, 2),
+              GET1B(&hdr->saddr, 1), GET1B(&hdr->saddr, 0), hdr->id);
     }
 
     struct in_addr src;
@@ -196,12 +199,15 @@ void routine() {
     for (int i = 0; i != total_dev; ++i)
         ARP_advertise(i);
 
-    // update linkstate, then update routing table based on linkstate
-    linkstate_update(ls, total_dev, arp_t);
+    if (RUN_LINKSTATE) {
+        // update linkstate, then update routing table based on linkstate
+        linkstate_update(ls, total_dev, arp_t);
+    }
 
-    update_routing_table();
-
-    send_link_state();
+    if (RUN_LINKSTATE) {
+        update_routing_table();
+        send_link_state();
+    }
 
 #ifdef DEBUG_UTILS_H
     if (RT_DEBUG_DUMP) {
@@ -242,9 +248,11 @@ int router_init() {
     // init broadcast set
     bc_set = NULL;
 
-    // init linkstate
-    ls = malloc(sizeof(struct LinkState));
-    linkstate_init(ls, total_dev, arp_t);
+    if (RUN_LINKSTATE) {
+        // init linkstate
+        ls = malloc(sizeof(struct LinkState));
+        linkstate_init(ls, total_dev, arp_t);
+    }
 
     return 0;
 }
@@ -288,22 +296,41 @@ int main(int argc, char *argv[]) {
                     break;
                 } else if (!strcmp(act, "send")) {
                     int port, len;
-                    char ip[20], msg[255];
-                    fscanf(action_file, "%d %s %s", &port, ip, msg);
+                    char src_ip[20], dst_ip[20], msg[255];
+                    fscanf(action_file, "%s %s %s", src_ip, dst_ip, msg);
 
-                    struct in_addr dst;
-                    inet_pton(AF_INET, ip, &dst);
-                    struct in_addr src;
-                    src.s_addr = dev_IP[port];
+                    struct in_addr src, dst;
+                    inet_pton(AF_INET, src_ip, &src);
+                    inet_pton(AF_INET, dst_ip, &dst);
 
                     len = strlen(msg);
 
                     ret = sendIPPacket(src, dst, 100, msg, len);
                     if (ret == 0) {
-                        fprintf(stderr, "send from port %d to ip %s: %s\n",
-                                port, ip, msg);
+                        fprintf(stderr, "send from %s to ip %s: %s\n", src_ip,
+                                dst_ip, msg);
                     } else {
-                        fprintf(stderr, "Can't send to %s\n", ip);
+                        fprintf(stderr, "Can't send to %s\n", dst_ip);
+                    }
+                } else if (!strcmp(act, "route")) {
+                    char ip[20], mask[20], device[20];
+                    uint8_t next_mac[6];
+                    fscanf(action_file,
+                           "%s %s %s %hhx:%hhx:%hhx:%hhx:%hhx:%hhx", ip, mask,
+                           device, next_mac + 0, next_mac + 1, next_mac + 2,
+                           next_mac + 3, next_mac + 4, next_mac + 5);
+                    struct in_addr dst, msk;
+                    inet_pton(AF_INET, ip, &dst);
+                    inet_pton(AF_INET, mask, &msk);
+
+                    ret = setRoutingTable(dst, msk, next_mac, device);
+
+                    if (ret == -1) {
+                        fprintf(stderr, "Error setting routing infomation\n");
+                    } else {
+                        fprintf(stderr,
+                                "Setting information, to %s, with mask %s, from dev %s\n", ip, mask,
+                                device);
                     }
                 }
             } while (0);

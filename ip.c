@@ -56,9 +56,12 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest, int proto,
     if (ret != 1) return -1;
     sendFrame(send_buffer, total_len, ETH_P_IP, &rec.nexthop_mac, rec.device);
 
-if (IP_DEBUG) {
-    fprintf(stderr, "send packet, %x ---> %x\n", hdr->saddr, hdr->daddr);
-}
+    if (IP_DEBUG) {
+        char src_ip[20], dst_ip[20];
+        inet_ntop(AF_INET, &hdr->saddr, src_ip, 20);
+        inet_ntop(AF_INET, &hdr->daddr, dst_ip, 20);
+        fprintf(stderr, "send packet, from port %d, %s ---> %s\n", rec.device, src_ip, dst_ip);
+    }
 
     free(send_buffer);
     return 0;
@@ -138,10 +141,14 @@ int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
     int ret;
     uint64_t cur_time = gettime_ms();
 
+    int dev_id = findDevice(device);
+
+    if (dev_id == -1) return -1;
+
     struct Record rec = {.dest = dest,
                          .mask = mask,
                          .device = findDevice(device),
-                         .timestamp = cur_time};
+                         .timestamp = -1};
 
     memcpy(rec.nexthop_mac, nextHopMAC, 6); // assume nextHopMAC is big endian
 
