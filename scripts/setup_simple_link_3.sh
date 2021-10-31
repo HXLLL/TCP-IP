@@ -13,3 +13,15 @@ sudo ./delVeth veth22
 
 sudo ./connectNS h1 h2 veth11 veth12 192.168.1
 sudo ./connectNS h2 h3 veth21 veth22 192.168.2
+
+sudo ./execNS h1 iptables -P INPUT DROP
+sudo ./execNS h2 iptables -P INPUT DROP
+sudo ./execNS h3 iptables -P INPUT DROP
+
+sudo ./execNS h1 iptables -P OUTPUT DROP
+sudo ./execNS h2 iptables -P OUTPUT DROP
+sudo ./execNS h3 iptables -P OUTPUT DROP
+
+sudo ./execNS h1 iptables -P FORWARD DROP
+sudo ./execNS h2 iptables -P FORWARD DROP
+sudo ./execNS h3 iptables -P FORWARD DROP

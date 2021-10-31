@@ -111,7 +111,7 @@ void update_neigh_info(struct LinkState *ls) {
         int j = 0;
         HASH_ITER(hh, arp_t[i]->table, rec, tmp) {
 
-            // if (cur_time - rec->timestamp > ARP_EXPIRE) continue;
+            if (cur_time - rec->timestamp > ARP_EXPIRE) continue;
 
             uint32_t t_gid = query_gid_by_ip(ls, rec->ip_addr);
             if (t_gid == -1) continue;
@@ -236,7 +236,9 @@ int linkstate_update(struct LinkState *ls, int neigh_net_cnt,
     // update dis and **next_hop**
     linkstate_SPFA(ls, dis, c);
 
-    linkstate_dump(ls);
+    if (LINKSTATE_DUMP) {
+        linkstate_dump(ls);
+    }
 
     pthread_mutex_unlock(&ls->ls_mutex);
 

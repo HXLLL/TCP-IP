@@ -70,10 +70,8 @@ int ARP_advertise(int id) {
         printf("\n");
     }
 
-    for (int i=0;i!=total_dev;++i) {
-        ret = broadcastFrame(data, sizeof(struct arp_data), ETH_P_ARP, i);
-        RCPE(ret == -1, -1, "Error broadcasting ARP frame");
-    }
+    ret = broadcastFrame(data, sizeof(struct arp_data), ETH_P_ARP, id);
+    RCPE(ret == -1, -1, "Error broadcasting ARP frame");
 
     free(data);
 

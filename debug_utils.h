@@ -10,6 +10,8 @@ static const int LINKSTATE_DEBUG_RECORD = 1;
 static const int LINKSTATE_DEBUG_IP_HOST = 1;
 static const int LINKSTATE_DEBUG_NEIGH = 1;
 
+static const int ARP_DEBUG_DUMP = 1;
+
 static const int ROUTING_TABLE_DEBUG_DUMP = 1;
 
 static char buffer[256];
@@ -40,11 +42,22 @@ static void linkstate_dump(struct LinkState *ls) {
                  ls->capacity);
     INDENT_INC();
     if (LINKSTATE_DEBUG_RECORD) {
-        INDENT_DEBUG("Records:\n");
+        INDENT_DEBUG("Records: %d in total\n", HASH_CNT(hh_id, ls->recs_id));
         INDENT_INC();
         struct linkstate_record *rec, *tmp;
+        struct linkstate_record *record_buffer[255];
+        memset(record_buffer, 0, sizeof(record_buffer));
+
         HASH_ITER(hh_id, ls->recs_id, rec, tmp) {
-            INDENT_DEBUG("Record lid=%u, gid=%u, timestamp: %ld\n", rec->id, rec->gid, rec->timestamp);
+            record_buffer[rec->id] = rec;
+        }
+
+        for (int i=0;i!=255;++i) {
+            if (!record_buffer[i]) continue;
+            rec = record_buffer[i];
+
+            INDENT_DEBUG("Record lid=%u, gid=%u, timestamp: %ld\n", rec->id,
+                         rec->gid, rec->timestamp);
             INDENT_INC();
 
             INDENT_DEBUG("%d Attached IP\n", rec->ip_count);
@@ -118,23 +131,50 @@ static void linkstate_dump(struct LinkState *ls) {
     INDENT_DEC();
 }
 
-static void rt_dump(struct RT *rt) {
-    printf("Routing Table, size: %d/%d\n", rt->cnt, rt->capacity);
-    char ip_buf[255];
-    uint64_t cur_time = gettime_ms();
-    INDENT_INC();
-    for (int i = 0; i != rt->cnt; ++i) {
+static void arp_dump(struct arp_table*arp_t) {
+    if (ARP_DEBUG_DUMP) {
+        uint64_t cur_time = gettime_ms();
         char buf[255];
-        sprintf(buf, "port: %d, dst: %s, mask: %s, mac: %s",
-                     rt->table[i].device, ip_str(&rt->table[i].dest.s_addr),
-                     mask_str(&rt->table[i].mask.s_addr),
-                     mac_str(rt->table[i].nexthop_mac));
-        if (cur_time - rt->table[i].timestamp > RT_EXPIRE)
-            INDENT_DEBUG("%s [EXPIRED] \n", buf);
-        else 
-            INDENT_DEBUG("%s\n", buf);
+
+        INDENT_DEBUG("ARP table for device %d, mac: %s, ip: %s\n",
+                     arp_t->device, mac_str(arp_t->local_mac_addr.data),
+                     ip_str(&arp_t->local_ip_addr));
+        INDENT_INC();
+
+        struct arp_record *rec, *tmp;
+        HASH_ITER(hh, arp_t->table, rec, tmp) {
+            sprintf(buf, "ip: %s, mac: %s", ip_str(&rec->ip_addr),
+                    mac_str(rec->mac_addr.data));
+            if (cur_time - rec->timestamp > ARP_EXPIRE) {
+                INDENT_DEBUG("%s [EXPIRED]\n", buf);
+            } else {
+                INDENT_DEBUG("%s\n", buf);
+            }
+        }
+
+        INDENT_DEC();
     }
-    INDENT_DEC();
+}
+
+static void rt_dump(struct RT *rt) {
+    if (ROUTING_TABLE_DEBUG_DUMP) {
+        uint64_t cur_time = gettime_ms();
+
+        printf("Routing Table, size: %d/%d\n", rt->cnt, rt->capacity);
+        INDENT_INC();
+        for (int i = 0; i != rt->cnt; ++i) {
+            char buf[255];
+            sprintf(buf, "port: %d, dst: %s, mask: %s, mac: %s",
+                    rt->table[i].device, ip_str(&rt->table[i].dest.s_addr),
+                    mask_str(&rt->table[i].mask.s_addr),
+                    mac_str(rt->table[i].nexthop_mac));
+            if (cur_time - rt->table[i].timestamp > RT_EXPIRE)
+                INDENT_DEBUG("%s [EXPIRED] \n", buf);
+            else
+                INDENT_DEBUG("%s\n", buf);
+        }
+        INDENT_DEC();
+    }
 }
 
 #endif

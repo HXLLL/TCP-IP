@@ -13,6 +13,8 @@
 
 struct RT *rt;
 
+const int IP_DEBUG = 0;
+
 int ip_init() {
     int ret;
 
@@ -54,6 +56,10 @@ int sendIPPacket(const struct in_addr src, const struct in_addr dest, int proto,
     if (ret != 1) return -1;
     sendFrame(send_buffer, total_len, ETH_P_IP, &rec.nexthop_mac, rec.device);
 
+if (IP_DEBUG) {
+    fprintf(stderr, "send packet, %x ---> %x\n", hdr->saddr, hdr->daddr);
+}
+
     free(send_buffer);
     return 0;
 }
@@ -88,6 +94,11 @@ int broadcastIPPacket(const struct in_addr src, int proto, const void *buf,
 
     for (int i = 0; i != total_dev; ++i) {
         sendFrame(send_buffer, total_len, ETH_P_IP, broadcast_mac.data, i);
+    }
+
+    if (IP_DEBUG) {
+        fprintf(stderr, "broadcast packet, %x ---> %x\n", hdr->saddr,
+                hdr->daddr);
     }
 
     free(send_buffer);

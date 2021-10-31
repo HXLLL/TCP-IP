@@ -3,7 +3,7 @@
 
 #include <netinet/in.h>
 
-#define RT_EXPIRE 1000 // in ms
+#define RT_EXPIRE 2000 // in ms
 
 struct Record {
     struct in_addr dest;

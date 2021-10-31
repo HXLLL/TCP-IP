@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#define BROADCAST_EXPIRE 500
 #define MAX_NETWORK_SIZE 16
 #define MAX_PORT 16
 
@@ -49,6 +50,7 @@ void process_link_state(void *data);
 
 void initiate_broadcast(void *buf, int len) {
     ++bc_id;
+    uint64_t cur_time = gettime_ms();
 
     // use port 0 to broadcast, TODO: find a more elegant way
     // for (int i = 0; i != total_dev; ++i) {
@@ -56,7 +58,7 @@ void initiate_broadcast(void *buf, int len) {
     bc_src.s_addr = dev_IP[0];
 
     struct bc_record *set_bc_id =
-        new_bc_record(bc_src.s_addr, bc_id, 0); // TODO: add timestamp
+        new_bc_record(bc_src.s_addr, bc_id, cur_time);
     HASH_ADD_PTR(bc_set, id, set_bc_id);
 
     broadcastIPPacket(bc_src, MY_CONTROL_PROTOCOl, buf, len, bc_id);
@@ -64,15 +66,20 @@ void initiate_broadcast(void *buf, int len) {
 }
 
 void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
+    uint64_t cur_time = gettime_ms();
     uint64_t bc_id = ((uint64_t)hdr->saddr << 32) + hdr->id;
     struct bc_record *bc_rec;
     HASH_FIND_PTR(bc_set, &bc_id, bc_rec);
 
-    if (bc_rec) return; // seen this packet before
-
-    struct bc_record *set_bc_id =
-        new_bc_record(hdr->saddr, hdr->id, 0); // TODO: add timestamp
-    HASH_ADD_PTR(bc_set, id, set_bc_id);
+    if (bc_rec &&
+        cur_time - bc_rec->timestamp <= BROADCAST_EXPIRE) { // seen it before
+        return;
+    } else if (bc_rec) {
+        bc_rec->timestamp = cur_time;
+    } else {
+        bc_rec = new_bc_record(hdr->saddr, hdr->id, cur_time);
+        HASH_ADD_PTR(bc_set, id, bc_rec);
+    }
 
     if (hdr->protocol == MY_CONTROL_PROTOCOl) {
         uint32_t my_protocol_type = *(uint32_t *)data;
@@ -107,7 +114,6 @@ int ip_callback(const void *frame, int len) {
     struct in_addr in_addr_src, in_addr_dst;
     in_addr_src.s_addr = hdr->saddr;
     in_addr_dst.s_addr = hdr->daddr;
-
     do {
         if (is_for_me(hdr->daddr) != -1) {
             DRECV("Recv message from %x", in_addr_src.s_addr);
@@ -194,6 +200,10 @@ void routine() {
     send_link_state();
 
     rt_dump(rt);
+
+    for (int i=0;i!=total_dev;++i) {
+        arp_dump(arp_t[i]);
+    }
 
     usleep(1000000);
 }

@@ -112,16 +112,16 @@ inline static void print_mac(FILE *file, const uint8_t *mac) {
             mac[3], mac[4], mac[5]);
 }
 
-inline static uint8_t GET1B(void *base, size_t offset) {
+inline static uint8_t GET1B(const void *base, size_t offset) {
     return *(uint8_t *)(base + offset);
 }
-inline static uint16_t GET2B(void *base, size_t offset) {
+inline static uint16_t GET2B(const void *base, size_t offset) {
     return *(uint16_t *)(base + offset);
 }
 inline static void PUT2B(void *base, size_t offset, uint16_t value) {
     *(uint16_t *)(base + offset) = value;
 }
-inline static uint32_t GET4B(void *base, size_t offset) {
+inline static uint32_t GET4B(const void *base, size_t offset) {
     return *(uint32_t *)(base + offset);
 }
 inline static void PUT4B(void *base, size_t offset, uint32_t value) {
@@ -143,4 +143,18 @@ inline static uint64_t gettime_ms() {
     return (t.tv_nsec + ((uint64_t)t.tv_sec * (int)1e9)) / 1000000;
 }
 
+static char mac_to_str_buf1[255], mac_to_str_buf2[255];
+inline static char *mac_to_str(void *mac, int id) {
+    if (id == 1) {
+        sprintf(mac_to_str_buf1, "%02x:%02x:%02x:%02x:%02x:%02x", GET1B(mac, 0),
+                GET1B(mac, 1), GET1B(mac, 2), GET1B(mac, 3), GET1B(mac, 4),
+                GET1B(mac, 5));
+        return mac_to_str_buf1;
+    } else {
+        sprintf(mac_to_str_buf2, "%02x:%02x:%02x:%02x:%02x:%02x", GET1B(mac, 0),
+                GET1B(mac, 1), GET1B(mac, 2), GET1B(mac, 3), GET1B(mac, 4),
+                GET1B(mac, 5));
+        return mac_to_str_buf2;
+    }
+}
 #endif
