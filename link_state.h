@@ -51,9 +51,11 @@ struct LinkState {
 
     uint32_t router_gid;
 
-    // arp information
+    // neighbor information
     int neigh_net_cnt;
     struct arp_table **arp_t;
+    struct neigh_record neigh[16][16];
+    int neigh_size[16];
 
     // ip host table
     struct ip_host_record *ip_rec;
@@ -64,8 +66,6 @@ struct LinkState {
 
     // neighbor table
     // TODO: optimize
-    struct neigh_record neigh[16][16];
-    int neigh_size[16];
 
     int *next_hop;
 };

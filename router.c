@@ -3,7 +3,7 @@
 #include "ip.h"
 #include "link_state.h"
 #include "utils.h"
-#include "debug_utils.h"
+// #include "debug_utils.h"
 
 #include "uthash/uthash.h"
 #include <assert.h>
@@ -203,6 +203,7 @@ void routine() {
 
     send_link_state();
 
+#ifdef DEBUG_UTILS_H
     if (RT_DEBUG_DUMP) {
         rt_dump(rt);
     }
@@ -212,6 +213,7 @@ void routine() {
             arp_dump(arp_t[i]);
         }
     }
+#endif
 
     usleep(1000000);
 }
