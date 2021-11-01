@@ -148,7 +148,7 @@ int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
     struct Record rec = {.dest = dest,
                          .mask = mask,
                          .device = findDevice(device),
-                         .timestamp = -1};
+                         .timestamp = cur_time};
 
     memcpy(rec.nexthop_mac, nextHopMAC, 6); // assume nextHopMAC is big endian
 

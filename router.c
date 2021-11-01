@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "debug_utils.h"
 
 #define BROADCAST_EXPIRE 500
 #define MAX_NETWORK_SIZE 16
