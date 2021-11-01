@@ -13,7 +13,7 @@
 
 struct RT *rt;
 
-const int IP_DEBUG = 0;
+const int IP_DEBUG = 1;
 
 int ip_init() {
     int ret;
