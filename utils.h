@@ -144,6 +144,10 @@ inline static uint64_t gettime_ms() {
 }
 
 static char mac_to_str_buf1[255], mac_to_str_buf2[255];
+/**
+ * @brief
+ * ! do not call it with the same id in one single function call!!!
+ */
 inline static char *mac_to_str(void *mac, int id) {
     if (id == 1) {
         sprintf(mac_to_str_buf1, "%02x:%02x:%02x:%02x:%02x:%02x", GET1B(mac, 0),

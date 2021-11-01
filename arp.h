@@ -14,6 +14,7 @@ struct arp_data {
     struct MAC_addr receiver_hw_addr;
     uint32_t receiver_ip_addr;
 };
+
 struct arp_record {
     uint32_t ip_addr;
     struct MAC_addr mac_addr;
