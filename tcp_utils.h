@@ -3,6 +3,12 @@
 
 #include "tcp.h"
 
+static int fd_scanf(int fd, char *format, ...) {
+    static char buffer[4096];
+    static char *p = buffer;
+    static int len = 0;
+}
+
 // TODO: set return to errno
 static int can_bind(struct socket_info_t *s) {
     if (!s->valid) {

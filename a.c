@@ -5,6 +5,7 @@
 
 #include "socket.h"
 
+#include "common_variable.h"
 #include "utils.h"
 
 #include <callback.h>
@@ -19,6 +20,7 @@
 #include <unistd.h>
 
 int main() {
+
     int ret;
     int sock_fd = __wrap_socket(AF_INET, SOCK_STREAM, 0);
     printf("%d\n", sock_fd);

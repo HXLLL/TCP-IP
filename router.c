@@ -21,10 +21,8 @@ const int LINKSTATE_ADVERTISE_DEBUG = 0;
 const int LINKSTATE_RECV_DEBUG = 0;
 const int FORWARD_DROP_DEBUG = 1;
 const int BROADCAST_DEBUG = 0;
-
 const int RT_DEBUG_DUMP = 0;
 const int ARP_DEBUG_DUMP = 0;
-
 
 const int RUN_LINKSTATE = 1;
 

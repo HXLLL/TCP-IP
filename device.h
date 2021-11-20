@@ -8,6 +8,8 @@
 
 #include "packetio.h"
 
+#include "common_variable.h"
+
 #include <pthread.h>
 #include <pcap/pcap.h>
 
@@ -17,7 +19,6 @@ struct MAC_addr {
 
 /* Constants */
 #define MAX_TRANSMIT_UNIT 1500
-#define MAX_DEVICES 255
 #define MAX_DEVICE_NAME 16
 
 /* Global Variables */

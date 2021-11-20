@@ -43,8 +43,7 @@ static int call_daemon(const char *format, ...) {
 
     if (!res_f) {
         ret = mkfifo(result_pipe_name, 0666);
-        // CPEL(ret == -1);
-        // TODO: allow existing pipe
+        CPEL(ret == -1 && errno != EEXIST);
     }
 
     va_start(args, format);
