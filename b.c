@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
 int ip_callback(const void *data, int len) {
     printf("Receive data length: %d\n", len);
@@ -37,4 +40,14 @@ int ether_callback(const void *data, int len, int dev) {
 }
 
 int main() {
+    FILE *f = fopen("1","r");
+    char buf[20];
+    int cnt;
+    while (1) {
+        int a,b;
+        cnt = fscanf(f, "%d%d",&a, &b);
+        if (cnt == 2) {
+            printf("%d\n", a+b);
+        }
+    }
 }

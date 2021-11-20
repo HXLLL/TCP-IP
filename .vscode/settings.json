@@ -32,7 +32,9 @@
         "thread": "c",
         "inet.h": "c",
         "debug_utils.h": "c",
-        "socket.h": "c"
+        "socket.h": "c",
+        "in.h": "c",
+        "common_variable.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-const int LINKSTATE_DEBUG = 1;
-const int LINKSTATE_DUMP = 1;
+const int LINKSTATE_DEBUG = 0;
+const int LINKSTATE_DUMP = 0;
 
 int linkstate_SPFA(struct LinkState *ls, int *dis, int **c) {
     int *q = malloc(sizeof(int) * ls->size);

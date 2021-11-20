@@ -29,9 +29,15 @@
         }                                                                      \
     while (0)
 
+#define CPEL(val)                                                     \
+    if (val) {                                                                 \
+        fprintf(stderr, "[ERROR] %s:%d\t", __FILE__, __LINE__);                \
+        exit(1);                                                               \
+    }
+
 #define CPE(val, msg, ret)                                                     \
     if (val) {                                                                 \
-        fprintf(stderr, msg);                                                  \
+        fprintf(stderr, "%s:%d\t %s", __FILE__, __LINE__, msg);                \
         exit(1);                                                               \
     }
 
@@ -45,6 +51,7 @@
 
 #define DSEND(...) fprintf(stderr, "[SEND] " __VA_ARGS__), fprintf(stderr, "\n")
 #define DRECV(...) fprintf(stderr, "[RECV] " __VA_ARGS__), fprintf(stderr, "\n")
+#define DPIPE(...) fprintf(stderr, "[PIPE] " __VA_ARGS__), fprintf(stderr, "\n")
 
 static int _hxl_indent_level = 0;
 #define INDENT_INC() (++_hxl_indent_level)
@@ -52,8 +59,8 @@ static int _hxl_indent_level = 0;
 #define INDENT_DEBUG(...)                                                      \
     do {                                                                       \
         for (int i = 0; i != _hxl_indent_level; ++i)                           \
-            fprintf(stderr, "    ");                                             \
-        fprintf(stderr,__VA_ARGS__);                                           \
+            fprintf(stderr, "    ");                                           \
+        fprintf(stderr, __VA_ARGS__);                                          \
     } while (0)
 
 /* Compute checksum for count bytes starting at addr, using one's complement of

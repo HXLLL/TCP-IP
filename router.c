@@ -25,7 +25,8 @@ const int BROADCAST_DEBUG = 0;
 const int RT_DEBUG_DUMP = 0;
 const int ARP_DEBUG_DUMP = 0;
 
-const int RUN_LINKSTATE = 0;
+
+const int RUN_LINKSTATE = 1;
 
 struct bc_record {
     uint64_t id;
