@@ -1,9 +1,13 @@
 CFLAGS 	:= -g3 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable
 CC 		:= gcc
 LDFLAGS := -lpcap -lpthread -lffcall
-LIB_FILE:=device.c packetio.c ip.c routing_table.c link_state.c arp.c
+LIB_FILE:=device.c packetio.c ip.c routing_table.c link_state.c arp.c socket.c
+# TODO separate socket.c and other lib files
 
-all: build/router #build/a build/b build/main
+all: build/a build/b build/tcp_daemon # build/router
+
+build/tcp_daemon: tcp_daemon.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 build/main: main.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)

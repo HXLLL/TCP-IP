@@ -31,6 +31,8 @@
         "host_table.h": "c",
         "thread": "c",
         "inet.h": "c",
-        "debug_utils.h": "c"
-    }
+        "debug_utils.h": "c",
+        "socket.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }
