@@ -20,9 +20,19 @@
 
 int main() {
     int ret;
-    int fd = __wrap_socket(AF_INET, SOCK_STREAM, 0);
-    printf("%d\n", fd);
-    
+    int sock_fd = __wrap_socket(AF_INET, SOCK_STREAM, 0);
+    printf("%d\n", sock_fd);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_addr.s_addr = 0x0100007f;
+    addr.sin_port = 10000;
+    addr.sin_family = AF_INET;
+
+    ret = __wrap_bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
+
+    printf("%d\n", ret);
+
     ret = __wrap_listen(65536, 123);
     printf("%d\n", ret);
 }

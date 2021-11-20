@@ -1,9 +1,11 @@
 #include "socket.h"
+#include "tcp.h"
 
 #include "common_variable.h"
 #include "utils.h"
 
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -12,19 +14,15 @@
 
 const int PIPE_DEBUG = 1;
 
-enum TCP_STATE{
-    LISTEN,
-};
-
-struct socket_info_t {
-    int type;
-    int state;
-};
-
 /**
  * @brief starting from 1
  */
 int socket_id_cnt = 0;
+
+struct socket_info_t sock_info[MAX_SOCKET];
+struct port_info_t port_info[MAX_PORT];
+
+#include "tcp_utils.h"
 
 int main(int argc, char *argv[]) {
     int ret;
@@ -38,42 +36,74 @@ int main(int argc, char *argv[]) {
     // TODO: allow existing pipe
 
     FILE *req_f = fopen(REQ_PIPE_NAME, "r");
+    open(REQ_PIPE_NAME, O_WRONLY); //! hack
     CPEL(req_f == NULL);
 
     while (1) {
-        char cmd[20]; int result;
+        char cmd[20];
+        int result;
         ret = fscanf(req_f, "%s", cmd);
 
-        if (ret == EOF) {
-            ret = fclose(req_f);
-            CPEL(ret == -1);
+        do {
+            if (!strcmp(cmd, "socket")) {
+                if (PIPE_DEBUG) DPIPE("Command: socket");
 
-            FILE *req_f = fopen(REQ_PIPE_NAME, "r");
-            CPEL(req_f == NULL);
+                ++socket_id_cnt;
 
-            if (PIPE_DEBUG) DPIPE("Reopening shared pipe");
+                struct socket_info_t *s = &sock_info[socket_id_cnt];
 
-            continue;
-        }
+                s->state = SOCKSTATE_UNBOUNDED;
+                s->valid = 1;
+                s->type = SOCKTYPE_CONNECTION;
 
-        if (!strcmp(cmd, "socket")) {
-            if (PIPE_DEBUG) DPIPE("Command: socket");
+                result = socket_id_cnt;
+            } else if (!strcmp(cmd, "bind")) {
+                int sid;
+                uint32_t ip_addr;
+                uint16_t port;
 
-            result = ++socket_id_cnt;
-        } else if (!strcmp(cmd, "bind")) {
-        } else if (!strcmp(cmd, "listen")) {
-            int sid, backlog;
-            fscanf(req_f, "%d%d", &sid, &backlog);
+                fscanf(req_f, "%d%x%hu", &sid, &ip_addr, &port);
 
-            if (PIPE_DEBUG) DPIPE("Command: listen %d %d", sid, backlog);
+                if (PIPE_DEBUG) DPIPE("Command: bind %d %x %d", sid, ip_addr, port);
 
-            result = 0;
-        } else if (!strcmp(cmd, "connect")) {
-        } else if (!strcmp(cmd, "accept")) {
-        } else if (!strcmp(cmd, "read")) {
-        } else if (!strcmp(cmd, "write")) {
-        } else if (!strcmp(cmd, "close")) {
-        }
+                struct socket_info_t *s = &sock_info[sid];
+
+                ret = can_bind(s);
+                if (ret < 0) {
+                    result = ret;
+                    break;
+                }
+
+                s->addr = ip_addr;
+                s->port = port;
+                s->state = SOCKSTATE_BINDED;
+                port_info[s->port].binded_socket = sid;
+
+                result = 0;
+            } else if (!strcmp(cmd, "listen")) {
+                int sid, backlog;
+                fscanf(req_f, "%d%d", &sid, &backlog);
+
+                if (PIPE_DEBUG) DPIPE("Command: listen %d %d", sid, backlog);
+
+                struct socket_info_t *s = &sock_info[sid];
+
+                ret = can_listen(s);
+                if (ret < 0) {
+                    result = ret;
+                    break;
+                }
+
+                s->state = SOCKSTATE_LISTEN; // TODO: carefully consider state transition
+
+                result = 0;
+            } else if (!strcmp(cmd, "connect")) {
+            } else if (!strcmp(cmd, "accept")) {
+            } else if (!strcmp(cmd, "read")) {
+            } else if (!strcmp(cmd, "write")) {
+            } else if (!strcmp(cmd, "close")) {
+            }
+        } while (0);
 
         char res_f_name[255];
         fscanf(req_f, "%s", res_f_name);
