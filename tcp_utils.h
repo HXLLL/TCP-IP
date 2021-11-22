@@ -3,14 +3,8 @@
 
 #include "tcp.h"
 
-static int fd_scanf(int fd, char *format, ...) {
-    static char buffer[4096];
-    static char *p = buffer;
-    static int len = 0;
-}
-
 // TODO: set return to errno
-static int can_bind(struct socket_info_t *s) {
+static int can_bind(struct socket_info_t *s, uint32_t addr, uint16_t port) {
     if (!s->valid) {
         return -ENOTSOCK;
     }
@@ -22,6 +16,19 @@ static int can_bind(struct socket_info_t *s) {
     }
     if (0) { // TODO: detect Address already in use
         return -EALREADY;
+    }
+    struct iface_t *iface = find_iface_by_ip(addr);
+
+    if (!iface) {
+        return -EADDRNOTAVAIL;
+    }
+
+    if (port >= 65536 || port < 0) {
+        return -EADDRNOTAVAIL;
+    }
+
+    if (iface->port_info[port].connection_socket != -1) {
+        return -EADDRINUSE;
     }
 
     return 0;

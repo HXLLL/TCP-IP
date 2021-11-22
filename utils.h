@@ -5,8 +5,10 @@
 #include <errno.h>
 #include <netinet/ether.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #define MY_CONTROL_PROTOCOl 0xFE
@@ -20,16 +22,16 @@
         if (x == MOD) x = 0;                                                   \
     } while (0)
 
-#define CPES(val, msg, errmsg)                                                 \
+#define CPES(val)                                                              \
     do                                                                         \
         if (val) {                                                             \
-            fprintf(stderr, msg);                                              \
-            fprintf(stderr, "%s", errmsg);                                     \
+            fprintf(stderr, "[%s:%d] %d:%s", __FILE__, __LINE__, errno,        \
+                    strerror(errno));                                          \
             exit(1);                                                           \
         }                                                                      \
     while (0)
 
-#define CPEL(val)                                                     \
+#define CPEL(val)                                                              \
     if (val) {                                                                 \
         fprintf(stderr, "[ERROR] %s:%d\t", __FILE__, __LINE__);                \
         exit(1);                                                               \
@@ -90,6 +92,11 @@ static void compute_ip_checksum(struct iphdr *iphdrp) {
     iphdrp->check =
         compute_checksum((unsigned short *)iphdrp, iphdrp->ihl << 2);
 }
+static void compute_tcp_checksum(struct tcphdr *tcphdrp) {
+    tcphdrp->check = 0;
+    tcphdrp->check =
+        compute_checksum((unsigned short *)tcphdrp, tcphdrp->doff << 2);
+}
 
 inline static void *eth_raw_content(void *buf) { return buf + ETH_HLEN; }
 inline static const void *eth_raw_content_const(const void *buf) {
@@ -100,13 +107,25 @@ inline static void *ip_raw_content(void *buf) {
     return buf + ((hdr->ihl) << 2);
 }
 inline static const void *ip_raw_content_const(const void *buf) {
-    struct iphdr *hdr = (struct iphdr *)buf;
+    const struct iphdr *hdr = (const struct iphdr *)buf;
     return buf + ((hdr->ihl) << 2);
 }
 inline static int eth_hdr_len(const void *buf) { return ETH_HLEN; }
 inline static int ip_hdr_len(const uint8_t *buf) {
-    struct iphdr *hdr = (struct iphdr *)buf;
+    const struct iphdr *hdr = (const struct iphdr *)buf;
     return (hdr->ihl) << 2;
+}
+inline static int tcp_hdr_len(const void *buf) {
+    const struct tcphdr *hdr = (const struct tcphdr *)buf;
+    return ((hdr->doff) << 2);
+}
+inline static const void *tcp_raw_content_const(const void *buf) {
+    const struct tcphdr *hdr = (const struct tcphdr *)buf;
+    return buf + ((hdr->doff) << 2);
+}
+inline static void *tcp_raw_content(void *buf) {
+    struct tcphdr *hdr = (struct tcphdr *)buf;
+    return buf + ((hdr->doff) << 2);
 }
 
 inline static void print_ip(FILE *file, uint32_t ip) {
@@ -168,4 +187,50 @@ inline static char *mac_to_str(void *mac, int id) {
         return mac_to_str_buf2;
     }
 }
+
+struct ring_buffer_t {
+    void **data;
+    size_t cap, size;
+    int head, tail;
+};
+static struct ring_buffer_t *rb_new(size_t len) {
+    struct ring_buffer_t *r = malloc(sizeof(struct ring_buffer_t));
+    r->data = malloc(sizeof(void *) * len);
+    memset(r->data, 0, sizeof(void *) * len);
+    r->cap = len;
+    r->size = 0;
+    r->head = r->tail = 0;
+    return r;
+}
+
+static void rb_free(struct ring_buffer_t *rb) {
+    free(rb->data);
+    free(rb);
+}
+
+static int rb_push(struct ring_buffer_t *rb, void *value) {
+    if (rb->size == rb->cap) exit(1); // TODO: return -1
+    ++rb->size;
+    rb->data[rb->tail] = value;
+    ADD_MOD(rb->tail, rb->cap);
+    return 0;
+}
+
+static int rb_pop(struct ring_buffer_t *rb) {
+    if (!rb->size) exit(1); // TODO: return -1
+    --rb->size;
+    ADD_MOD(rb->head, rb->cap);
+    return 0;
+}
+
+static void *rb_front(struct ring_buffer_t *rb) { return rb->data[rb->head]; }
+static int rb_empty(struct ring_buffer_t *rb) { return !rb->size; }
+
+static void *rb_nxt(struct ring_buffer_t *rb, void **p) {
+    if (p == rb->data + rb->tail) exit(1); // TODO: return -1
+    ++p;
+    if (p == rb->data + rb->cap) p = rb->data;
+    return p;
+}
+
 #endif

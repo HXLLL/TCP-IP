@@ -27,14 +27,16 @@ int main() {
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
-    addr.sin_addr.s_addr = 0x0100007f;
-    addr.sin_port = 10000;
+    addr.sin_addr.s_addr = 0x0103A8C0;
+    addr.sin_port = 10001;
     addr.sin_family = AF_INET;
 
     ret = __wrap_bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
+    CPES(ret < 0);
 
-    printf("%d\n", ret);
+    ret = __wrap_listen(sock_fd, 0);
+    CPES(ret < 0);
 
-    ret = __wrap_listen(65536, 123);
-    printf("%d\n", ret);
+    ret = __wrap_accept(sock_fd, NULL, NULL);
+    CPES(ret < 0);
 }

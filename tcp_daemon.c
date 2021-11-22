@@ -1,3 +1,5 @@
+#define _DEFAULT_SOURCE
+
 #include "arp.h"
 #include "device.h"
 #include "ip.h"
@@ -15,26 +17,30 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/select.h>
 #include <unistd.h>
 
 #define ROUTINE_INTERVAL 1000 // ms
-#define BROADCAST_EXPIRE 500 // ms
+#define BROADCAST_EXPIRE 500  // ms
 #define MAX_NETWORK_SIZE 16
 
+const int DEBUG_SEPERATE_TICKS = 0;
 const int LINKSTATE_ADVERTISE_DEBUG = 0;
 const int LINKSTATE_RECV_DEBUG = 0;
 const int FORWARD_DROP_DEBUG = 1;
 const int BROADCAST_DEBUG = 0;
-const int PIPE_DEBUG = 1;
+const int PIPE_DEBUG = 0;
+const int PRINT_COMMAND = 1;
 const int RT_DEBUG_DUMP = 0;
 const int ARP_DEBUG_DUMP = 0;
+const int TCP_DATA_DEBUG = 0;
 
 const int RUN_LINKSTATE = 1;
 
@@ -146,15 +152,251 @@ static void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
 }
 
 /******************************************************************************
- *                              IP Packet Handling
+ *                              TCP Packet Handling
  ******************************************************************************/
 
-static int is_for_me(uint32_t addr) {
-    int flag = -1;
-    for (int i = 0; i != total_dev; ++i)
-        if (addr == dev_IP[i]) flag = i;
-    return flag;
+static int tcp_send_data(struct segment_t *seg, struct socket_info_t *sock) {
+    int ret;
+    size_t total_len = sizeof(struct tcphdr) + seg->len;
+    uint8_t *send_buffer = malloc(total_len);
+    memset(send_buffer, 0, total_len);
+    struct tcphdr *hdr = (struct tcphdr *)send_buffer;
+
+    /* following is send in little endian */
+    hdr->source = sock->local_port;
+    hdr->dest = sock->remote_port;
+    hdr->seq = seg->seq;
+    hdr->doff = 5;
+    /* above is send in little endian */
+
+    compute_tcp_checksum(hdr);
+
+    void *data = tcp_raw_content(send_buffer);
+    memcpy(data, seg->data, seg->len);
+
+    struct in_addr src, dst;
+    src.s_addr = sock->local_addr;  // big endian
+    dst.s_addr = sock->remote_addr; // big endian
+
+    sendIPPacket(src, dst, IPPROTO_TCP, send_buffer, total_len);
+
+    if (TCP_DATA_DEBUG) {
+        char src_ip[20], dst_ip[20];
+        inet_ntop(AF_INET, &sock->local_addr, src_ip, 20);
+        inet_ntop(AF_INET, &sock->remote_addr, dst_ip, 20);
+        fprintf(stderr, "send packet, from %s:%d ---> %s:%d\n", src_ip,
+                sock->local_port, dst_ip, sock->remote_port);
+    }
+
+    free(send_buffer);
+    return 0;
 }
+
+static int tcp_send_ctrl_packet(struct socket_info_t *sock, uint16_t syn,
+                                uint32_t seq, uint16_t ack, uint32_t ack_seq) {
+    int ret;
+    size_t total_len = sizeof(struct tcphdr);
+    uint8_t *send_buffer = malloc(total_len);
+    memset(send_buffer, 0, total_len);
+    struct tcphdr *hdr = (struct tcphdr *)send_buffer;
+
+    /* following is send in little endian */
+    hdr->source = sock->local_port;
+    hdr->dest = sock->remote_port;
+    hdr->syn = syn;
+    hdr->seq = seq;
+    hdr->ack = ack;
+    hdr->ack_seq = ack_seq;
+    hdr->doff = 5;
+    /* above is send in little endian */
+
+    compute_tcp_checksum(hdr);
+
+    struct in_addr src, dst;
+    src.s_addr = sock->local_addr;  // big endian
+    dst.s_addr = sock->remote_addr; // big endian
+
+    sendIPPacket(src, dst, IPPROTO_TCP, send_buffer, total_len);
+
+    if (TCP_DATA_DEBUG) {
+        char src_ip[20], dst_ip[20];
+        inet_ntop(AF_INET, &sock->local_addr, src_ip, 20);
+        inet_ntop(AF_INET, &sock->remote_addr, dst_ip, 20);
+        fprintf(stderr, "send packet, from %s:%d ---> %s:%d\n", src_ip,
+                sock->local_port, dst_ip, sock->remote_port);
+    }
+
+    free(send_buffer);
+    return 0;
+}
+
+static int tcp_send_syn(struct socket_info_t *sock, uint32_t seq) {
+    return tcp_send_ctrl_packet(sock, 1, seq, 0, 0);
+}
+static int tcp_send_ack(struct socket_info_t *sock, uint32_t ack_seq) {
+    return tcp_send_ctrl_packet(sock, 0, 0, 1, ack_seq);
+}
+
+static int tcp_callback_accept(struct socket_info_t *s) {
+    struct port_info_t *port = &(s->ifa->port_info[s->local_port]);
+    struct pending_connection_t *conn = rb_front(port->conn_queue);
+    rb_pop(port->conn_queue);
+
+    int sid_data = new_socket(SOCKTYPE_DATA, SOCKSTATE_SYN_RECEIVED);
+    struct socket_info_t *s_data = &sock_info[sid_data];
+
+    s_data->local_addr = s->local_addr;
+    s_data->local_port = s->local_port;
+    s_data->remote_addr = conn->remote_addr;
+    s_data->remote_port = conn->remote_port;
+    s_data->irs = conn->irs;
+    s_data->rcv_nxt = conn->irs + 1;
+
+    s_data->iss = 1;
+    s_data->snd_una = 1;
+    s_data->snd_nxt = 2;
+
+    free(conn);
+
+    tcp_send_ctrl_packet(s_data, 1, s_data->iss, 1, s_data->rcv_nxt);
+
+    s->callback_state = CALLBACK_NONE;
+    s_data->callback_state = CALLBACK_SENT_SYNACK;
+    s_data->res_f = s->res_f;
+    s->res_f = NULL;
+
+    return 0;
+}
+
+static int tcp_callback_sent_synack(struct socket_info_t *s) {
+    int ret;
+
+    fprintf(s->res_f, "%d %x %d\n", 0, s->remote_addr,
+            s->remote_port);
+    fflush(s->res_f);
+
+    ret = fclose(s->res_f);
+    CPEL(ret < 0);
+
+    return 0;
+}
+
+static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
+                      uint32_t remote_ip) {
+    int ret;
+    const struct tcphdr *hdr = frame;
+    const void *data = tcp_raw_content_const(frame);
+    int data_len = len - tcp_hdr_len(frame);
+    uint16_t s_port = ntohs(hdr->source), d_port = ntohs(hdr->dest);
+
+    struct port_info_t *port_info = &iface->port_info[d_port];
+
+    int sock_id = -1;
+    for (int i = 0; i != port_info->data_socket_cnt; ++i) {
+        int sid = port_info->data_socket[i];
+        if (sock_info[sid].remote_addr == remote_ip &&
+            sock_info[sid].remote_port == s_port) {
+            sock_id = sid;
+            break;
+        }
+    }
+
+    if (sock_id != -1) { // new data
+        struct socket_info_t *sock = &sock_info[sock_id];
+        if (sock->state == SOCKSTATE_ESTABLISHED) {
+            // TODO: consider piggyback
+            if (hdr->ack) {                          // ACK
+                if (hdr->ack_seq == sock->snd_nxt) { // TODO: sliding window
+                    if ((void **)sock->nxt_send !=
+                        sock->out_buf->data + sock->out_buf->tail) {
+                        struct segment_t *nxt_send = *(sock->nxt_send);
+
+                        sock->snd_nxt = nxt_send->seq + nxt_send->len;
+                        sock->snd_una = nxt_send->seq;
+
+                        tcp_send_data(nxt_send, sock);
+                        sock->nxt_send =
+                            rb_nxt(sock->out_buf, (void **)sock->nxt_send);
+                    }
+                }
+            } else { // NORMAL
+                if (hdr->seq != sock->rcv_nxt) return -1;
+                struct segment_t *seg = new_segment(data_len, hdr->seq);
+                memcpy(seg->data, data, data_len);
+
+                // buffer the packet
+                ret = rb_push(sock->in_buf, seg);
+                if (ret == -1) return -1;
+                sock->rcv_nxt = seg->seq + seg->len;
+
+                // send ack
+                tcp_send_ack(sock, sock->rcv_nxt);
+            }
+        } else if (sock->state == SOCKSTATE_SYN_SENT) {
+            if (hdr->syn && hdr->ack && hdr->ack_seq == sock->snd_nxt) {
+                // send ack
+                sock->irs = hdr->seq;
+                sock->rcv_nxt = hdr->seq + 1;
+
+                tcp_send_ack(sock, sock->rcv_nxt);
+
+                sock->state = SOCKSTATE_ESTABLISHED;
+            } else if (hdr->syn) {
+                // send ack
+                sock->irs = hdr->seq;
+                sock->rcv_nxt = hdr->seq + 1;
+
+                tcp_send_ack(sock, sock->rcv_nxt);
+
+                sock->state = SOCKSTATE_SYN_RECEIVED;
+            }
+        } else if (sock->state == SOCKSTATE_SYN_RECEIVED) {
+            if (hdr->ack && hdr->ack_seq == sock->snd_nxt) {
+                // send ack
+                sock->irs = hdr->seq;
+                sock->rcv_nxt = hdr->seq + 1;
+
+                tcp_send_ack(sock, sock->rcv_nxt);
+
+                sock->state = SOCKSTATE_ESTABLISHED;
+
+                if (sock->callback_state == CALLBACK_SENT_SYNACK) {
+                    tcp_callback_sent_synack(sock);
+                } else if (sock->callback)
+            }
+        }
+    } else {
+        if (port_info->connection_socket != -1 && hdr->syn) { // new connection
+            struct socket_info_t *sock =
+                &sock_info[port_info->connection_socket];
+            if (sock->state != SOCKSTATE_LISTEN) return -1;
+
+            struct pending_connection_t *conn =
+                malloc(sizeof(struct pending_connection_t));
+            *conn = (struct pending_connection_t){
+                .remote_addr = remote_ip,
+                .remote_port = hdr->source,
+                .irs = hdr->seq,
+            };
+
+            // buffer the packet
+            ret = rb_push(port_info->conn_queue, conn);
+            if (ret == -1) return -1;
+
+            if (sock->callback_state == CALLBACK_ACCEPT) {
+                tcp_callback_accept(sock);
+            }
+        } else { // drop it
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/******************************************************************************
+ *                              IP Packet Handling
+ ******************************************************************************/
 
 static int ip_callback(const void *frame, int len) {
     int ret;
@@ -165,12 +407,19 @@ static int ip_callback(const void *frame, int len) {
     in_addr_dst.s_addr = hdr->daddr;
 
     do {
-        if (is_for_me(hdr->daddr) != -1) {
+        struct iface_t *iface = find_iface_by_ip(hdr->daddr);
+
+        if (iface) {
             DRECV("Recv message from %x", in_addr_src.s_addr);
 
-            fwrite(data, 1, len - ip_hdr_len(frame), stdout);
+            size_t data_len = len - ip_hdr_len(frame);
+
+            fwrite(data, 1, data_len, stdout);
             fwrite("\n", 1, 1, stdout);
 
+            if (hdr->protocol == IPPROTO_TCP) {
+                handle_tcp(data, data_len, iface, hdr->saddr);
+            }
         } else if (hdr->daddr == 0xffffffff) { // broadcast
 
             handle_broadcast(hdr, data, len);
@@ -220,7 +469,8 @@ static void routine() {
     if (gettime_ms() - last_routine < ROUTINE_INTERVAL) return;
     last_routine = gettime_ms();
 
-    fprintf(stderr, "===============time: %u==================\n", ++tick);
+    if (DEBUG_SEPERATE_TICKS)
+        fprintf(stderr, "===============time: %u==================\n", ++tick);
 
     for (int i = 0; i != total_dev; ++i)
         ARP_advertise(i);
@@ -253,8 +503,9 @@ static void routine() {
  */
 int socket_id_cnt = 0;
 
+struct iface_t interfaces[MAX_DEVICES];
+
 struct socket_info_t sock_info[MAX_SOCKET];
-struct port_info_t port_info[MAX_PORT];
 
 #include "tcp_utils.h"
 
@@ -292,6 +543,23 @@ int tcp_daemon_init() {
         linkstate_init(ls, total_dev, arp_t);
     }
 
+    // init sock_info[]
+    for (int i = 0; i != MAX_SOCKET; ++i) {
+        sock_info[i].valid = 0;
+    }
+
+    // init interfaces[]
+    for (int i = 0; i != total_dev; ++i) {
+        interfaces[i].ip = dev_IP[i];
+        for (int j = 0; j != MAX_PORT; ++j) {
+            interfaces[i].port_info[j].connection_socket = -1;
+            interfaces[i].port_info[j].data_socket_cnt = 0;
+            memset(interfaces[i].port_info[j].data_socket, 0,
+                   sizeof(interfaces[i].port_info[i].data_socket));
+            interfaces[i].port_info[j].conn_queue = rb_new(16);
+        }
+    }
+
     return 0;
 }
 
@@ -319,7 +587,7 @@ int main(int argc, char *argv[]) {
     ret = mkfifo(REQ_PIPE_NAME, 0666);
     CPEL(ret == -1 && errno != EEXIST);
 
-    int req_fd = open(REQ_PIPE_NAME, O_RDONLY|O_NONBLOCK);
+    int req_fd = open(REQ_PIPE_NAME, O_RDONLY | O_NONBLOCK);
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(req_fd, &fds);
@@ -339,7 +607,6 @@ int main(int argc, char *argv[]) {
 
     // ======================= start the real work ===========================
 
-
     while (1) {
         usleep(100000);
 
@@ -351,52 +618,48 @@ int main(int argc, char *argv[]) {
         if (flag != 1) continue;
 
         char cmd[255];
-        int result = 0;
+        int result = 0, special_return = 0;
         ret = fscanf(req_f, "%s", cmd);
 
         // ====================== handle commands ==========================
         do {
             if (!strcmp(cmd, "socket")) {
-                if (PIPE_DEBUG) DPIPE("Command: socket");
+                if (PRINT_COMMAND) DPIPE("Command: socket");
 
-                ++socket_id_cnt;
+                int sid = new_socket(SOCKTYPE_CONNECTION, SOCKSTATE_UNBOUNDED);
 
-                struct socket_info_t *s = &sock_info[socket_id_cnt];
-
-                s->state = SOCKSTATE_UNBOUNDED;
-                s->valid = 1;
-                s->type = SOCKTYPE_CONNECTION;
-
-                result = socket_id_cnt;
+                result = sid;
             } else if (!strcmp(cmd, "bind")) {
                 int sid;
                 uint32_t ip_addr;
                 uint16_t port;
-
                 fscanf(req_f, "%d%x%hu", &sid, &ip_addr, &port);
 
-                if (PIPE_DEBUG)
+                if (PRINT_COMMAND)
                     DPIPE("Command: bind %d %x %d", sid, ip_addr, port);
 
                 struct socket_info_t *s = &sock_info[sid];
+                struct iface_t *ifa = find_iface_by_ip(ip_addr);
 
-                ret = can_bind(s);
+                ret = can_bind(s, ip_addr, port);
                 if (ret < 0) {
                     result = ret;
                     break;
                 }
 
-                s->addr = ip_addr;
-                s->port = port;
+                s->local_addr = ip_addr;
+                s->local_port = port;
                 s->state = SOCKSTATE_BINDED;
-                port_info[s->port].binded_socket = sid;
+                s->ifa = ifa;
+
+                ifa->port_info[port].connection_socket = sid;
 
                 result = 0;
             } else if (!strcmp(cmd, "listen")) {
                 int sid, backlog;
                 fscanf(req_f, "%d%d", &sid, &backlog);
 
-                if (PIPE_DEBUG) DPIPE("Command: listen %d %d", sid, backlog);
+                if (PRINT_COMMAND) DPIPE("Command: listen %d %d", sid, backlog);
 
                 struct socket_info_t *s = &sock_info[sid];
 
@@ -406,24 +669,103 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
-                s->state = SOCKSTATE_LISTEN; // TODO: carefully consider state
-                                             // transition
+                s->state = SOCKSTATE_LISTEN;
 
                 result = 0;
             } else if (!strcmp(cmd, "connect")) {
+                int sid;
+                uint32_t ip_addr;
+                uint16_t port;
+                fscanf(req_f, "%d%x%hu", &sid, &ip_addr, &port);
+
+                if (PRINT_COMMAND)
+                    DPIPE("Command: connect %d %x %d", sid, ip_addr, port);
+
+                struct socket_info_t *s = &sock_info[sid];
+
+                ret = can_connect(s);
+                if (ret < 0) {
+                    result = ret;
+                    break;
+                }
+
+                s->type = SOCKTYPE_DATA;
+                if (s->state == SOCKSTATE_UNBOUNDED) {
+                    struct neigh_record *rec = linkstate_next_hop(ls, ip_addr);
+                    if (rec == NULL) {
+                        result = -1;
+                        break;
+                    }
+
+                    struct iface_t *ifa = &interfaces[rec->port];
+                    s->local_addr = ifa->ip;
+                    allocate_free_port(ifa, &(s->local_port));
+                    s->ifa = ifa;
+
+                    struct port_info_t *ifa_port =
+                        &(ifa->port_info[s->local_port]);
+                    ifa_port->data_socket[ifa_port->data_socket_cnt++] = sid;
+
+                    s->state = SOCKSTATE_BINDED;
+                }
+
+                s->iss = 1;
+                s->snd_una = 1;
+                s->snd_nxt = 2;
+
+                tcp_send_syn(s, s->iss);
+                s->state = SOCKSTATE_SYN_SENT;
+
+                while (s->state != SOCKSTATE_ESTABLISHED) {
+                    usleep(10000);
+                }
+
+                result = 0;
             } else if (!strcmp(cmd, "accept")) {
+                int sid;
+                fscanf(req_f, "%d", &sid);
+
+                if (PRINT_COMMAND) DPIPE("Command: accept %d", sid);
+
+                struct socket_info_t *s = &sock_info[sid];
+
+                ret = can_accept(s);
+                if (ret < 0) {
+                    result = ret;
+                    break;
+                }
+
+                char res_f_name[255];
+                fscanf(req_f, "%s", res_f_name);
+                FILE *res_f = fopen(res_f_name, "w");
+                CPEL(res_f == NULL);
+
+                if (PIPE_DEBUG) DPIPE("opening %s", res_f_name);
+
+                s->res_f = res_f;
+
+                struct port_info_t *port = &(s->ifa->port_info[s->local_port]);
+                if (!rb_empty(port->conn_queue)) {
+                    tcp_callback_accept(s);
+                } else {
+                    s->callback_state = CALLBACK_ACCEPT;
+                }
+
+                special_return = 1;
             } else if (!strcmp(cmd, "read")) {
             } else if (!strcmp(cmd, "write")) {
             } else if (!strcmp(cmd, "close")) {
             } else if (!strcmp(cmd, "nop")) {
 
-                if (PIPE_DEBUG) DPIPE("Command: nop");
+                if (PRINT_COMMAND) DPIPE("Command: nop");
 
                 result = 0x7fffffff;
 
                 break;
             }
         } while (0);
+
+        if (special_return) continue;
 
         // ================= then return the result =======================
         char res_f_name[255];
