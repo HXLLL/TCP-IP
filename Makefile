@@ -4,7 +4,7 @@ LDFLAGS := -lpcap -lpthread -lffcall
 LIB_FILE:= device.c packetio.c ip.c routing_table.c link_state.c arp.c
 # TODO separate socket.c and other lib files
 
-all: build/a build/tcp_daemon
+all: build/a build/b build/tcp_daemon
 
 build/a: a.c $(LIB_FILE) socket.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)

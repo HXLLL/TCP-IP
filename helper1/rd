@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [[ $# -eq 0 ]]; then
+    sudo ./execNS h1 ../build/tcp_daemon -d veth1
+else
+    sudo ./execNS h1 gdb --args ../build/tcp_daemon -d veth1
+fi
+

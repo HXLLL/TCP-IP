@@ -31,6 +31,7 @@
 #define BROADCAST_EXPIRE 500  // ms
 #define MAX_NETWORK_SIZE 16
 
+const int CALLBACK_DEBUG = 1;
 const int DEBUG_SEPERATE_TICKS = 0;
 const int LINKSTATE_ADVERTISE_DEBUG = 0;
 const int LINKSTATE_RECV_DEBUG = 0;
@@ -40,7 +41,7 @@ const int PIPE_DEBUG = 0;
 const int PRINT_COMMAND = 1;
 const int RT_DEBUG_DUMP = 0;
 const int ARP_DEBUG_DUMP = 0;
-const int TCP_DATA_DEBUG = 0;
+const int TCP_DATA_DEBUG = 1;
 
 const int RUN_LINKSTATE = 1;
 
@@ -156,6 +157,7 @@ static void handle_broadcast(struct iphdr *hdr, const uint8_t *data, int len) {
  ******************************************************************************/
 
 static int tcp_send_data(struct segment_t *seg, struct socket_info_t *sock) {
+
     int ret;
     size_t total_len = sizeof(struct tcphdr) + seg->len;
     uint8_t *send_buffer = malloc(total_len);
@@ -237,6 +239,10 @@ static int tcp_send_ack(struct socket_info_t *sock, uint32_t ack_seq) {
     return tcp_send_ctrl_packet(sock, 0, 0, 1, ack_seq);
 }
 
+static int tcp_callback_accept(struct socket_info_t *s);
+static int tcp_callback_sent_synack(struct socket_info_t *s);
+static int tcp_callback_connect(struct socket_info_t *s);
+
 static int tcp_callback_accept(struct socket_info_t *s) {
     struct port_info_t *port = &(s->ifa->port_info[s->local_port]);
     struct pending_connection_t *conn = rb_front(port->conn_queue);
@@ -244,6 +250,13 @@ static int tcp_callback_accept(struct socket_info_t *s) {
 
     int sid_data = new_socket(SOCKTYPE_DATA, SOCKSTATE_SYN_RECEIVED);
     struct socket_info_t *s_data = &sock_info[sid_data];
+
+    if (CALLBACK_DEBUG) {
+        fprintf(stderr,
+                "[CALLBACK] socket %d accepted syn, sending synack from socket "
+                "%d\n",
+                s->id, s_data->id);
+    }
 
     s_data->local_addr = s->local_addr;
     s_data->local_port = s->local_port;
@@ -256,23 +269,54 @@ static int tcp_callback_accept(struct socket_info_t *s) {
     s_data->snd_una = 1;
     s_data->snd_nxt = 2;
 
+    s_data->ifa = s->ifa;
+
     free(conn);
 
-    tcp_send_ctrl_packet(s_data, 1, s_data->iss, 1, s_data->rcv_nxt);
+    struct port_info_t *ifa_port = &(s_data->ifa->port_info[s_data->local_port]);
 
-    s->callback_state = CALLBACK_NONE;
-    s_data->callback_state = CALLBACK_SENT_SYNACK;
+    ifa_port->data_socket[ifa_port->data_socket_cnt++] = sid_data;
+
+    s->callback = NULL;
+    s_data->callback = tcp_callback_sent_synack;
     s_data->res_f = s->res_f;
     s->res_f = NULL;
+
+    tcp_send_ctrl_packet(s_data, 1, s_data->iss, 1, s_data->rcv_nxt);
 
     return 0;
 }
 
 static int tcp_callback_sent_synack(struct socket_info_t *s) {
+    if (CALLBACK_DEBUG) {
+        fprintf(stderr,
+                "[CALLBACK] socket %d received ack for synack, returning from "
+                "accept\n",
+                s->id);
+    }
+
     int ret;
 
-    fprintf(s->res_f, "%d %x %d\n", 0, s->remote_addr,
-            s->remote_port);
+    fprintf(s->res_f, "%d %x %d\n", 0, s->remote_addr, s->remote_port);
+    fflush(s->res_f);
+
+    ret = fclose(s->res_f);
+    CPEL(ret < 0);
+
+    return 0;
+}
+
+static int tcp_callback_connect(struct socket_info_t *s) {
+    if (CALLBACK_DEBUG) {
+        fprintf(stderr,
+                "[CALLBACK] socket %d received synack for syn, returning from "
+                "connect\n",
+                s->id);
+    }
+
+    int ret;
+
+    fprintf(s->res_f, "%d\n", 0);
     fflush(s->res_f);
 
     ret = fclose(s->res_f);
@@ -287,7 +331,12 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
     const struct tcphdr *hdr = frame;
     const void *data = tcp_raw_content_const(frame);
     int data_len = len - tcp_hdr_len(frame);
-    uint16_t s_port = ntohs(hdr->source), d_port = ntohs(hdr->dest);
+    uint16_t s_port = hdr->source, d_port = hdr->dest;
+
+    if (TCP_DATA_DEBUG) {
+        DTCP("Receive packet from %x:%d, type: %s\n", remote_ip, s_port,
+             str_packet_type(hdr));
+    }
 
     struct port_info_t *port_info = &iface->port_info[d_port];
 
@@ -317,6 +366,7 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
                         tcp_send_data(nxt_send, sock);
                         sock->nxt_send =
                             rb_nxt(sock->out_buf, (void **)sock->nxt_send);
+                        if (TCP_DATA_DEBUG) DTCP("packet handling case: 1");
                     }
                 }
             } else { // NORMAL
@@ -331,6 +381,7 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
 
                 // send ack
                 tcp_send_ack(sock, sock->rcv_nxt);
+                if (TCP_DATA_DEBUG) DTCP("packet handling case: 2");
             }
         } else if (sock->state == SOCKSTATE_SYN_SENT) {
             if (hdr->syn && hdr->ack && hdr->ack_seq == sock->snd_nxt) {
@@ -341,6 +392,11 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
                 tcp_send_ack(sock, sock->rcv_nxt);
 
                 sock->state = SOCKSTATE_ESTABLISHED;
+
+                if (sock->callback) {
+                    sock->callback(sock);
+                }
+                if (TCP_DATA_DEBUG) DTCP("packet handling case: 3");
             } else if (hdr->syn) {
                 // send ack
                 sock->irs = hdr->seq;
@@ -349,6 +405,7 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
                 tcp_send_ack(sock, sock->rcv_nxt);
 
                 sock->state = SOCKSTATE_SYN_RECEIVED;
+                if (TCP_DATA_DEBUG) DTCP("packet handling case: 4");
             }
         } else if (sock->state == SOCKSTATE_SYN_RECEIVED) {
             if (hdr->ack && hdr->ack_seq == sock->snd_nxt) {
@@ -360,9 +417,10 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
 
                 sock->state = SOCKSTATE_ESTABLISHED;
 
-                if (sock->callback_state == CALLBACK_SENT_SYNACK) {
-                    tcp_callback_sent_synack(sock);
-                } else if (sock->callback)
+                if (sock->callback) {
+                    sock->callback(sock);
+                }
+                if (TCP_DATA_DEBUG) DTCP("packet handling case: 5");
             }
         }
     } else {
@@ -383,10 +441,12 @@ static int handle_tcp(const void *frame, size_t len, struct iface_t *iface,
             ret = rb_push(port_info->conn_queue, conn);
             if (ret == -1) return -1;
 
-            if (sock->callback_state == CALLBACK_ACCEPT) {
-                tcp_callback_accept(sock);
+            if (sock->callback) {
+                sock->callback(sock);
             }
+            if (TCP_DATA_DEBUG) DTCP("packet handling case: 6");
         } else { // drop it
+            if (TCP_DATA_DEBUG) DTCP("packet handling case: 7");
             return -1;
         }
     }
@@ -410,15 +470,12 @@ static int ip_callback(const void *frame, int len) {
         struct iface_t *iface = find_iface_by_ip(hdr->daddr);
 
         if (iface) {
-            DRECV("Recv message from %x", in_addr_src.s_addr);
-
             size_t data_len = len - ip_hdr_len(frame);
-
-            fwrite(data, 1, data_len, stdout);
-            fwrite("\n", 1, 1, stdout);
 
             if (hdr->protocol == IPPROTO_TCP) {
                 handle_tcp(data, data_len, iface, hdr->saddr);
+            } else {
+                DRECV("Recv message from %x", in_addr_src.s_addr);
             }
         } else if (hdr->daddr == 0xffffffff) { // broadcast
 
@@ -646,6 +703,10 @@ int main(int argc, char *argv[]) {
                     result = ret;
                     break;
                 }
+                char res_f_name[255];
+                fscanf(req_f, "%s", res_f_name);
+                FILE *res_f = fopen(res_f_name, "w");
+                CPEL(res_f == NULL);
 
                 s->local_addr = ip_addr;
                 s->local_port = port;
@@ -702,25 +763,32 @@ int main(int argc, char *argv[]) {
                     allocate_free_port(ifa, &(s->local_port));
                     s->ifa = ifa;
 
-                    struct port_info_t *ifa_port =
-                        &(ifa->port_info[s->local_port]);
-                    ifa_port->data_socket[ifa_port->data_socket_cnt++] = sid;
-
                     s->state = SOCKSTATE_BINDED;
                 }
+
+                char res_f_name[255];
+                fscanf(req_f, "%s", res_f_name);
+                FILE *res_f = fopen(res_f_name, "w");
+                CPEL(res_f == NULL);
+
+                s->state = SOCKSTATE_SYN_SENT;
+                s->callback = tcp_callback_connect;
+                s->res_f = res_f;
+
+                s->remote_addr = ip_addr;
+                s->remote_port = port;
 
                 s->iss = 1;
                 s->snd_una = 1;
                 s->snd_nxt = 2;
 
+                struct port_info_t *ifa_port =
+                    &(s->ifa->port_info[s->local_port]);
+                ifa_port->data_socket[ifa_port->data_socket_cnt++] = sid;
+
                 tcp_send_syn(s, s->iss);
-                s->state = SOCKSTATE_SYN_SENT;
 
-                while (s->state != SOCKSTATE_ESTABLISHED) {
-                    usleep(10000);
-                }
-
-                result = 0;
+                special_return = 1;
             } else if (!strcmp(cmd, "accept")) {
                 int sid;
                 fscanf(req_f, "%d", &sid);
@@ -748,7 +816,7 @@ int main(int argc, char *argv[]) {
                 if (!rb_empty(port->conn_queue)) {
                     tcp_callback_accept(s);
                 } else {
-                    s->callback_state = CALLBACK_ACCEPT;
+                    s->callback = tcp_callback_accept;
                 }
 
                 special_return = 1;

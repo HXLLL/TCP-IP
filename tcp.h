@@ -7,13 +7,6 @@
 #define MAX_CONNECTION 16
 #define MAX_BUFFER_PER_SOCKET 255
 
-enum CALLBACK_STATE {
-    CALLBACK_NONE,
-    CALLBACK_ACCEPT,
-    CALLBACK_SENT_SYNACK,
-    CALLBACK_CONNECT,
-};
-
 enum SOCKET_TYPE {
     SOCKTYPE_CONNECTION,
     SOCKTYPE_DATA,
@@ -56,10 +49,11 @@ struct iface_t;
 
 struct socket_info_t {
     struct iface_t *ifa;
+    int id;
     int valid;
     int type;
     int state;
-    int callback_state;
+    int (*callback)(struct socket_info_t*);
     uint32_t local_addr;
     uint16_t local_port;
     uint32_t remote_addr;
@@ -106,10 +100,11 @@ static int new_socket(int type, int state) {
 
     memset(sock, 0, sizeof(struct socket_info_t));
 
+    sock->id = socket_id_cnt;
     sock->type = type;
     sock->valid = 1;
     sock->state = state;
-    sock->callback_state = CALLBACK_NONE;
+    sock->callback = NULL;
 
     sock->in_buf = rb_new(MAX_BUFFER_PER_SOCKET);
     sock->out_buf = rb_new(MAX_BUFFER_PER_SOCKET);

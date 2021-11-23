@@ -54,6 +54,7 @@
 #define DSEND(...) fprintf(stderr, "[SEND] " __VA_ARGS__), fprintf(stderr, "\n")
 #define DRECV(...) fprintf(stderr, "[RECV] " __VA_ARGS__), fprintf(stderr, "\n")
 #define DPIPE(...) fprintf(stderr, "[PIPE] " __VA_ARGS__), fprintf(stderr, "\n")
+#define DTCP(...) fprintf(stderr, "[TCP] " __VA_ARGS__), fprintf(stderr, "\n")
 
 static int _hxl_indent_level = 0;
 #define INDENT_INC() (++_hxl_indent_level)
@@ -233,4 +234,41 @@ static void *rb_nxt(struct ring_buffer_t *rb, void **p) {
     return p;
 }
 
+enum TCP_PACKET_TYPE {
+    TCPTYPE_UNKNOWN,
+    TCPTYPE_NORMAL,
+    TCPTYPE_ACK,
+    TCPTYPE_SYN,
+    TCPTYPE_SYNACK,
+};
+
+static int tcp_packet_type(const struct tcphdr *hdr) {
+    if (!hdr->ack && !hdr->syn) {
+        return TCPTYPE_NORMAL;
+    } else if (hdr->ack && !hdr->syn) {
+        return TCPTYPE_ACK;
+    } else if (!hdr->ack && hdr->syn) {
+        return TCPTYPE_SYN;
+    } else if (hdr->ack && hdr->syn) {
+        return TCPTYPE_SYNACK;
+    } else {
+        return TCPTYPE_UNKNOWN;
+    }
+}
+
+static char *str_packet_type(const struct tcphdr *hdr) {
+    int type = tcp_packet_type(hdr);
+
+    switch (type) {
+    case TCPTYPE_NORMAL:
+        return "NORMAL";
+    case TCPTYPE_ACK:
+        return "ACK";
+    case TCPTYPE_SYN:
+        return "SYN";
+    case TCPTYPE_SYNACK:
+        return "SYNACK";
+        default: return "UNKNOWN";
+    }
+}
 #endif

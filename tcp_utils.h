@@ -2,6 +2,8 @@
 #define TCP_UTILS_H
 
 #include "tcp.h"
+#include <netinet/tcp.h>
+
 
 // TODO: set return to errno
 static int can_bind(struct socket_info_t *s, uint32_t addr, uint16_t port) {

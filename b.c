@@ -5,49 +5,37 @@
 
 #include "socket.h"
 
+#include "common_variable.h"
 #include "utils.h"
 
+#include <callback.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <netinet/ether.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
-
-int ip_callback(const void *data, int len) {
-    printf("Receive data length: %d\n", len);
-    len -= ip_hdr_len(data);
-    data = ip_raw_content_const(data);
-    if (len <= 255) {
-        fwrite(data, 1, len, stdout);
-    } else {
-        fwrite(data, 1, 255, stdout);
-    }
-    fwrite("\n", 1, 1, stdout);
-    return 0;
-}
-
-int ether_callback(const void *data, int len, int dev) {
-    printf("Receive data from dev %d, length: %d\n", dev, len);
-    if (len <= 255) {
-        fwrite(data + ETH_HLEN, 1, len - ETH_HLEN, stdout);
-    } else {
-        fwrite(data + ETH_HLEN, 1, 255 - ETH_HLEN, stdout);
-    }
-    fwrite("\n", 1, 1, stdout);
-    return 0;
-}
+#include <unistd.h>
 
 int main() {
-    FILE *f = fopen("1","r");
-    char buf[20];
-    int cnt;
-    while (1) {
-        int a,b;
-        cnt = fscanf(f, "%d%d",&a, &b);
-        if (cnt == 2) {
-            printf("%d\n", a+b);
-        }
-    }
+    int ret;
+    int sock_fd = __wrap_socket(AF_INET, SOCK_STREAM, 0);
+    printf("%d\n", sock_fd);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_addr.s_addr = 0x0203A8C0;
+    addr.sin_port = 10001;
+    addr.sin_family = AF_INET;
+
+    ret = __wrap_bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
+    CPES(ret < 0);
+
+    ret = __wrap_listen(sock_fd, 0);
+    CPES(ret < 0);
+
+    ret = __wrap_accept(sock_fd, NULL, NULL);
+    CPES(ret < 0);
 }

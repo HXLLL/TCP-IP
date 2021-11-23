@@ -20,23 +20,25 @@
 #include <unistd.h>
 
 int main() {
-
     int ret;
     int sock_fd = __wrap_socket(AF_INET, SOCK_STREAM, 0);
     printf("%d\n", sock_fd);
 
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_addr.s_addr = 0x0103A8C0;
-    addr.sin_port = 10001;
-    addr.sin_family = AF_INET;
+    struct sockaddr_in local_addr;
+    memset(&local_addr, 0, sizeof(local_addr));
+    local_addr.sin_addr.s_addr = 0x0103A8C0;
+    local_addr.sin_port = 10000;
+    local_addr.sin_family = AF_INET;
 
-    ret = __wrap_bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
-    CPES(ret < 0);
+    struct sockaddr_in remote_addr;
+    memset(&remote_addr, 0, sizeof(remote_addr));
+    remote_addr.sin_addr.s_addr = 0x0203A8C0;
+    remote_addr.sin_port = 10001;
+    remote_addr.sin_family = AF_INET;
 
-    ret = __wrap_listen(sock_fd, 0);
-    CPES(ret < 0);
+    // ret = __wrap_bind(sock_fd, (struct sockaddr*)&local_addr, sizeof(local_addr));
+    // CPES(ret < 0);
 
-    ret = __wrap_accept(sock_fd, NULL, NULL);
+    ret = __wrap_connect(sock_fd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
     CPES(ret < 0);
 }
