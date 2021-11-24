@@ -204,7 +204,11 @@ static struct ring_buffer_t *rb_new(size_t len) {
     return r;
 }
 
-static void rb_free(struct ring_buffer_t *rb) {
+static void rb_free(struct ring_buffer_t *rb, void (*free_func)(void*)) {
+    for (int i=rb->head;i!=rb->tail;) {
+        free_func(rb->data[i]);
+        ADD_MOD(i, rb->cap);
+    }
     free(rb->data);
     free(rb);
 }
@@ -239,11 +243,14 @@ enum TCP_PACKET_TYPE {
     TCPTYPE_NORMAL,
     TCPTYPE_ACK,
     TCPTYPE_SYN,
+    TCPTYPE_RST,
     TCPTYPE_SYNACK,
 };
 
 static int tcp_packet_type(const struct tcphdr *hdr) {
-    if (!hdr->ack && !hdr->syn) {
+    if (hdr->rst) {
+        return TCPTYPE_RST;
+    } else if (!hdr->ack && !hdr->syn) {
         return TCPTYPE_NORMAL;
     } else if (hdr->ack && !hdr->syn) {
         return TCPTYPE_ACK;
@@ -268,7 +275,14 @@ static char *str_packet_type(const struct tcphdr *hdr) {
         return "SYN";
     case TCPTYPE_SYNACK:
         return "SYNACK";
-        default: return "UNKNOWN";
+    case TCPTYPE_RST:
+        return "RST";
+    default:
+        return "UNKNOWN";
     }
+}
+
+static int min(int x,int y) {
+    return x<y?x:y;
 }
 #endif

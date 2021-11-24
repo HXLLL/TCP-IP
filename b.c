@@ -36,6 +36,16 @@ int main() {
     ret = __wrap_listen(sock_fd, 0);
     CPES(ret < 0);
 
-    ret = __wrap_accept(sock_fd, NULL, NULL);
+    int conn_fd = __wrap_accept(sock_fd, NULL, NULL);
+    CPES(conn_fd < 0);
+
+    getchar();
+
+    char buf[100];
+    ret = __wrap_read(conn_fd, buf, 5);
+    printf("inbound %d bytes\n", ret);
+    
+    ret = __wrap_close(conn_fd);
     CPES(ret < 0);
+    printf("%d\n", ret);
 }

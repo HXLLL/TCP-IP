@@ -22,6 +22,8 @@
 
 const int PIPE_DEBUG = 1;
 
+
+
 /**
  * @brief my_fdesc, starting at 65536
  */
@@ -37,7 +39,6 @@ static int call_daemon(const char *format, ...) {
     int write_ret, ret;
     va_list args;
 
-    // TODO: make req_f and res_f consistent
     int req_fd = open(REQ_PIPE_NAME, O_WRONLY);
     CPEL(req_fd == -1);
 
@@ -93,7 +94,7 @@ int __wrap_socket(int domain, int type, int protocol) {
 
         return my_fdesc_id++;
     } else {
-        return socket(domain, type, protocol);
+        return __real_socket(domain, type, protocol);
     }
 }
 
@@ -105,7 +106,7 @@ int __wrap_bind(int socket, const struct sockaddr *address,
 
         call_daemon("bind %d %x %d",
                           my_fdesc_socket_id[socket - MY_FDESC_START],
-                          addr->sin_addr.s_addr, addr->sin_port);
+                          addr->sin_addr.s_addr, ntohs(addr->sin_port));
         get_daemon_ret("%d", &ret);
 
         if (addr->sin_family != AF_INET) {
@@ -119,7 +120,7 @@ int __wrap_bind(int socket, const struct sockaddr *address,
             return 0;
         }
     } else {
-        return bind(socket, address, address_len);
+        return __real_bind(socket, address, address_len);
     }
 }
 
@@ -138,7 +139,7 @@ int __wrap_listen(int socket, int backlog) { // TODO: recognize backlog
             return 0;
         }
     } else {
-        return listen(socket, backlog);
+        return __real_listen(socket, backlog);
     }
 }
 
@@ -151,7 +152,7 @@ int __wrap_connect(int socket, const struct sockaddr *address,
 
         call_daemon("connect %d %x %d",
                           my_fdesc_socket_id[socket - MY_FDESC_START],
-                          addr->sin_addr.s_addr, addr->sin_port);
+                          addr->sin_addr.s_addr, ntohs(addr->sin_port));
         get_daemon_ret("%d", &ret);
 
         if (ret < 0) {
@@ -161,7 +162,7 @@ int __wrap_connect(int socket, const struct sockaddr *address,
             return 0;
         }
     } else {
-        return connect(socket, address, address_len);
+        return __real_connect(socket, address, address_len);
     }
 }
 
@@ -178,7 +179,7 @@ int __wrap_accept(int socket, struct sockaddr *address, socklen_t *address_len) 
             struct sockaddr_in *addr = (struct sockaddr_in *)address;
             memset(addr, 0, sizeof(struct sockaddr_in));
             addr->sin_addr.s_addr = remote_addr;
-            addr->sin_port = remote_port;
+            addr->sin_port = htons(remote_port);
             addr->sin_family = AF_INET;
         }
         if (address_len) {
@@ -189,18 +190,88 @@ int __wrap_accept(int socket, struct sockaddr *address, socklen_t *address_len) 
             errno = -ret;
             return -1;
         } else {
-            return 0;
+            my_fdesc_socket_id[my_fdesc_id-MY_FDESC_START] = ret;
+            return my_fdesc_id++;
         }
     } else {
-        return accept(socket, address, address_len);
+        return __real_accept(socket, address, address_len);
     }
 }
 
-ssize_t __wrap_read(int fildes, void *buf, size_t nbyte);
+ssize_t __wrap_read(int fildes, void *buf, size_t nbyte) {
+    int ret;
 
-ssize_t __wrap_write(int fildes, const void *buf, size_t nbyte);
+    if (fildes >= MY_FDESC_START) {
+        int write_ret, ret;
+        va_list args;
 
-int __wrap_close(int fildes);
+        int req_fd = open(REQ_PIPE_NAME, O_WRONLY);
+        CPEL(req_fd == -1);
+
+        sprintf(req_string_buffer, "read %d %lu\n", my_fdesc_socket_id[fildes - MY_FDESC_START], nbyte);
+
+        strcat(req_string_buffer, " ");
+        strcat(req_string_buffer, result_pipe_name);
+        strcat(req_string_buffer, "\n");
+        int len = strlen(req_string_buffer);
+
+        write_ret = write(req_fd, req_string_buffer, len);
+
+        ret = close(req_fd);
+        CPEL(ret < 0);
+
+        fscanf(res_f, "%d\n", &ret);
+
+        fread(buf, 1, ret, res_f);
+
+        return ret;
+    } else {
+        return __real_read(fildes, buf, nbyte);
+    }
+}
+
+ssize_t __wrap_write(int fildes, const void *buf, size_t nbyte) { // currently only support string
+    int ret;
+
+    if (fildes >= MY_FDESC_START) {
+        int write_ret, ret;
+        va_list args;
+
+        int req_fd = open(REQ_PIPE_NAME, O_WRONLY);
+        CPEL(req_fd == -1);
+
+        sprintf(req_string_buffer, "write %d %lu\n", my_fdesc_socket_id[fildes - MY_FDESC_START], nbyte);
+        int len = strlen(req_string_buffer);
+
+        write_ret = write(req_fd, req_string_buffer, len);
+        ret = write(req_fd, buf, nbyte);
+
+        sprintf(req_string_buffer, " %s\n", result_pipe_name);
+        len = strlen(req_string_buffer);
+
+        write_ret = write(req_fd, req_string_buffer, len);
+
+        ret = close(req_fd);
+        CPEL(ret < 0);
+
+        fscanf(res_f, "%d", &ret);
+        return ret;
+    } else {
+        return __real_write(fildes, buf, nbyte);
+    }
+}
+
+int __wrap_close(int fildes) {
+    int ret;
+
+    if (fildes >= MY_FDESC_START) {
+        call_daemon("close %d\n", my_fdesc_socket_id[fildes-MY_FDESC_START]);
+        get_daemon_ret("%d", &ret);
+        return ret;
+    } else {
+        return __real_close(fildes);
+    }
+}
 
 int __wrap_getaddrinfo(const char *node, const char *service,
                        const struct addrinfo *hints, struct addrinfo **res) {

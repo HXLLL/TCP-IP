@@ -41,4 +41,13 @@ int main() {
 
     ret = __wrap_connect(sock_fd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
     CPES(ret < 0);
+
+    getchar();
+
+    ret = __wrap_write(sock_fd, "hello", 5);
+
+    getchar();
+
+    __wrap_close(sock_fd);
+    CPES(ret < 0);
 }
